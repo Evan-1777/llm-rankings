@@ -14,7 +14,7 @@
 - **平台**：Linux x86_64（WSL 文件系统），开发与测试在本机；生产为个人 VPS。
 - **Shell**：bash
 - **运行时**：Go 1.27；Node 24 + pnpm 11.23；SQLite（modernc.org/sqlite，纯 Go，无 CGO）；React 19 + TypeScript 7 + Vite 8。
-- **版本管理**：git；`master` 为当前分支。
+- **版本管理**：git；远端 [Evan-1777/llm-rankings](https://github.com/Evan-1777/llm-rankings)（公开）；`master` 为当前分支。
 - **依赖**：Go 模块（`go.mod` / `go.sum`）；前端 pnpm（`web/pnpm-lock.yaml`）。生产镜像由 CI 构建，本机无 Docker。
 - **本地运行**：
   1. `pnpm --dir web install`
@@ -36,9 +36,10 @@
   - `pnpm --dir web build`
   - `CGO_ENABLED=0 go build ./cmd/server`
 - **部署**：
-  - CI 将镜像推送到 `ghcr.io/<owner>/llm-rank`。
+  - CI 将镜像推送到 `ghcr.io/evan-1777/llm-rankings`（`latest` 与 `sha-*`、分支、版本标签）。
   - 复制 `deploy/.env.example` 为 `deploy/.env`，填写镜像、密码哈希与会话密钥。
-  - `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d`。
+  - `docker compose --env-file deploy/.env -f deploy/compose.yaml pull`
+  - `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d`
   - 容器只绑定 `127.0.0.1:8080`，由宿主反向代理终止 TLS；SQLite 使用命名卷 `llm-rank-data` 挂载到 `/data`。
 - ★ 本机未安装 Docker；不本地构建镜像，镜像构建由 GitHub Actions 验证。
 - ★ 前端构建产物通过 `//go:embed all:dist` 进入 Go 二进制；生产只运行一个进程。
@@ -132,11 +133,12 @@ Dockerfile
 - 2026-10-22：`pnpm --dir web typecheck` 通过；`pnpm --dir web test` 10/10 通过；`pnpm --dir web build` 通过。
 - 2026-10-22：`CGO_ENABLED=0 go build ./cmd/server` 通过。
 - 2026-10-22：浏览器手工验收覆盖 1440 / 1024 / 768 / 390；排行、详情、对比、工作台、设置、登录、评分弹窗与空/错/加载状态可用；页面级无横向溢出；移动端表格与弹窗可用。
-- 未在本地验证：Docker 镜像构建（本机无 Docker）；由 `.github/workflows/ci.yml` 在 GitHub Actions 构建并推送 GHCR。
+- 2026-10-22：GitHub Actions run `39633816016` 的 test 与 image job 均通过，镜像 `ghcr.io/evan-1777/llm-rankings:latest` 已推送；匿名拉取 manifest 返回 200。
+- 未在本地验证：Docker 镜像构建与 Compose 实际启动（本机无 Docker）；Compose 仅完成 YAML 解析与变量检查。
 
 ## 外部集成
 
-- **GitHub Actions / ghcr.io**：push 到 `master` 或 `v*` 标签时运行测试、构建并推送镜像；PR 构建镜像但不推送。仓库需允许 Packages 写入。
+- **GitHub Actions / ghcr.io**：push 到 `master` 或 `v*` 标签时运行测试、构建并推送镜像；PR 构建镜像但不推送。仓库需允许 Packages 写入（公开仓库默认允许 Actions 使用 `GITHUB_TOKEN` 推送）。
 - **VPS 反向代理**：由现有反向代理提供 HTTPS 与域名；应用只监听 `127.0.0.1:8080`；反代须保留 Host，并在覆盖 `X-Forwarded-For` 时设置 `TRUST_PROXY=true`。
 - **备份**：SQLite 卷备份或管理员 JSON 导出；不提供导入。
 - 无数据库、缓存、对象存储等外部服务。

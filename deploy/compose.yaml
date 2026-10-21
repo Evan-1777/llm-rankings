@@ -1,3 +1,5 @@
+name: llm-rank
+
 services:
   app:
     image: ${LLM_RANK_IMAGE:?set LLM_RANK_IMAGE in deploy/.env}
@@ -15,6 +17,11 @@ services:
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   llm-rank-data:
