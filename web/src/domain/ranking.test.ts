@@ -1,0 +1,113 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  barWidth,
+  composite,
+  dimensionMax,
+  formatDimension,
+  formatPercent,
+  formatScore,
+  previewRanking,
+  sortRows,
+  truncatePercent,
+  type RankRow,
+} from "./ranking.ts";
+
+const dimensions = [
+  { id: 1, name: "Reasoning", weight: 50 },
+  { id: 2, name: "Coding", weight: 30 },
+  { id: 3, name: "Writing", weight: 20 },
+  { id: 4, name: "Idle", weight: 0 },
+];
+
+function row(slug: string, score: number | null, coverage: number, rank: number | null, scores: Record<string, number>): RankRow {
+  return { slug, name: slug, vendor: "", score, coverage, provisional: coverage < 0.8, rank, scores };
+}
+
+test("coverage truncates instead of rounding", () => {
+  assert.equal(truncatePercent(0.799), 79.9);
+  assert.equal(formatPercent(0.799), "79.9%");
+  assert.equal(formatPercent(0.8), "80%");
+  assert.equal(formatPercent(1), "100%");
+  assert.equal(formatPercent(0.5800000000000001), "58%");
+});
+
+test("composite normalizes weights and ignores zero-weight dimensions", () => {
+  const result = composite(dimensions, { "1": 12.5, "2": 8, "3": 0, "4": 100 });
+  assert.ok(result.score !== null);
+  assert.equal(result.score.toFixed(2), "8.65");
+  assert.equal(result.coverage, 1);
+  assert.equal(result.scoredCount, 3);
+});
+
+test("partial coverage is provisional and below 80% only", () => {
+  const below = composite(dimensions, { "1": 9, "2": 8 });
+  assert.equal(below.coverage, 0.8);
+  assert.equal(below.provisional, false);
+  const partial = composite(dimensions, { "1": 9 });
+  assert.equal(partial.provisional, true);
+});
+
+test("no weights yields no score", () => {
+  const result = composite([{ id: 9, name: "Idle", weight: 0 }], { "9": 10 });
+  assert.equal(result.score, null);
+  assert.equal(result.coverage, 0);
+});
+
+test("unscored rows stay last in both directions", () => {
+  const rows = [
+    row("unscored", null, 0, null, {}),
+    row("low", 8, 1, 2, { "1": 8 }),
+    row("high", 9, 1, 1, { "1": 9 }),
+  ];
+  assert.deepEqual(sortRows(rows, "coverage", "asc").map((r) => r.slug), ["high", "low", "unscored"]);
+  assert.deepEqual(sortRows(rows, "score", "desc").map((r) => r.slug), ["high", "low", "unscored"]);
+});
+
+test("dimension sorting keeps missing values last and official rank unchanged", () => {
+  const rows = [
+    row("a", 9, 1, 1, { "1": 9 }),
+    row("b", 8, 1, 2, {}),
+    row("c", 7, 1, 3, { "1": 7 }),
+  ];
+  const sorted = sortRows(rows, "dim-1", "asc");
+  assert.deepEqual(sorted.map((r) => r.slug), ["c", "a", "b"]);
+  assert.deepEqual(sorted.map((r) => r.rank), [3, 1, 2]);
+});
+
+test("model sorting reverses and is stable by official rank", () => {
+  const rows = [
+    row("a", 9, 1, 1, { "1": 9 }),
+    row("b", 9, 1, 2, { "1": 9 }),
+  ];
+  assert.deepEqual(sortRows(rows, "model", "asc").map((r) => r.slug), ["a", "b"]);
+  assert.deepEqual(sortRows(rows, "model", "desc").map((r) => r.slug), ["b", "a"]);
+});
+
+test("preview updates composite and rank without touching stored rows", () => {
+  const rows = [
+    row("a", 9, 1, 1, { "1": 9, "2": 9, "3": 9 }),
+    row("b", 8, 0.8, 2, { "1": 8, "2": 8 }),
+  ];
+  const preview = previewRanking(rows, dimensions, "b", { 1: 8, 2: 8, 3: 10 });
+  assert.equal(preview.score?.toFixed(2), "8.40");
+  assert.equal(preview.coverage, 1);
+  assert.equal(preview.rank, 2);
+  assert.equal(rows[1].scores["3"], undefined);
+});
+
+test("score formatting keeps one decimal dimension values and two decimals totals", () => {
+  assert.equal(formatScore(12.5), "12.50");
+  assert.equal(formatScore(100), "100.00");
+  assert.equal(formatScore(8.694999999999999), "8.70");
+  assert.equal(formatDimension(12.5), "12.5");
+  assert.equal(formatDimension(100), "100.0");
+  assert.equal(formatScore(null), "—");
+});
+
+test("relative bars use the dimension max with a floor of 10", () => {
+  assert.equal(dimensionMax([row("a", 9, 1, 1, { "1": 12.5 })], 1), 12.5);
+  assert.equal(dimensionMax([row("b", 9, 1, 1, { "1": 8 })], 1), 10);
+  assert.equal(barWidth(8, 10), 80);
+  assert.equal(barWidth(null, 10), 0);
+});

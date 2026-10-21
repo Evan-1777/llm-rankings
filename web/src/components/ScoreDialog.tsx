@@ -1,0 +1,341 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useBlocker } from "react-router-dom";
+import { api, errorMessage } from "../api/client";
+import type { ModelDetail, Rankings, RankingModel } from "../api/types";
+import { formatPercent, formatScore, previewRanking } from "../domain/ranking";
+import { rankLabel } from "../lib/format";
+import { Button, IconButton } from "./Button";
+import { useConfirm } from "./Confirm";
+import { Dialog, DialogHeader } from "./Dialog";
+import { Icon } from "./Icons";
+import { useToast } from "./Toast";
+import ui from "./ui.module.css";
+import styles from "./ScoreDialog.module.css";
+
+interface DraftRow {
+  value: string;
+  note: string;
+  openNote: boolean;
+}
+
+interface OriginalRow {
+  value: number | null;
+  note: string;
+}
+
+interface ParsedValue {
+  value: number | null;
+  error: string | null;
+}
+
+function parseValue(raw: string): ParsedValue {
+  if (raw.trim() === "") return { value: null, error: null };
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return { value: null, error: "请输入不小于 0 的有限数" };
+  }
+  return { value: Math.round(numeric * 10) / 10, error: null };
+}
+
+const EMPTY_DIMENSIONS: ModelDetail["dimensions"] = [];
+
+interface ScoreDialogProps {
+  open: boolean;
+  model: RankingModel | null;
+  rankings: Rankings;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDialogProps) {
+  const [detail, setDetail] = useState<ModelDetail | null>(null);
+  const [draft, setDraft] = useState<Record<number, DraftRow>>({});
+  const [original, setOriginal] = useState<Record<number, OriginalRow>>({});
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const confirm = useConfirm();
+  const toast = useToast();
+  const promptOpen = useRef(false);
+  const firstInput = useRef<HTMLInputElement>(null);
+
+  const slug = model?.slug ?? null;
+
+  useEffect(() => {
+    if (!open || !slug) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setLoadError("");
+    setDetail(null);
+    setDraft({});
+    setOriginal({});
+    setSaveError("");
+    api
+      .model(slug, controller.signal)
+      .then((data) => {
+        const nextDraft: Record<number, DraftRow> = {};
+        const nextOriginal: Record<number, OriginalRow> = {};
+        for (const dimension of data.dimensions) {
+          nextDraft[dimension.id] = {
+            value: dimension.value == null ? "" : String(dimension.value),
+            note: dimension.note ?? "",
+            openNote: Boolean(dimension.note),
+          };
+          nextOriginal[dimension.id] = { value: dimension.value, note: dimension.note ?? "" };
+        }
+        setDetail(data);
+        setDraft(nextDraft);
+        setOriginal(nextOriginal);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setLoadError(errorMessage(error));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [open, slug]);
+
+  const dimensions = detail?.dimensions ?? EMPTY_DIMENSIONS;
+
+  useEffect(() => {
+    if (open && detail && detail.dimensions.length > 0) {
+      firstInput.current?.focus();
+    }
+  }, [open, detail]);
+
+  const updateRow = (id: number, patch: Partial<DraftRow>) => {
+    setDraft((current) => ({
+      ...current,
+      [id]: { ...current[id], ...patch },
+    }));
+  };
+
+  const parsedValues = useMemo(() => {
+    const values: Record<number, number | null> = {};
+    for (const dimension of dimensions) {
+      const row = draft[dimension.id];
+      if (!row) continue;
+      values[dimension.id] = parseValue(row.value).value;
+    }
+    return values;
+  }, [dimensions, draft]);
+
+  const errors = useMemo(() => {
+    const next: Record<number, string> = {};
+    for (const dimension of dimensions) {
+      const row = draft[dimension.id];
+      if (!row) continue;
+      const parsed = parseValue(row.value);
+      if (parsed.error) next[dimension.id] = parsed.error;
+      else if (row.note.length > 500) next[dimension.id] = "备注不能超过 500 个字符";
+    }
+    return next;
+  }, [dimensions, draft]);
+
+  const dirty = useMemo(() => {
+    return dimensions.some((dimension) => {
+      const row = draft[dimension.id];
+      const base = original[dimension.id];
+      if (!row || !base) return false;
+      return parseValue(row.value).value !== base.value || row.note !== base.note;
+    });
+  }, [dimensions, draft, original]);
+
+  const preview = useMemo(() => {
+    if (!model) return null;
+    return previewRanking(rankings.models, dimensions, model.slug, parsedValues);
+  }, [model, rankings.models, dimensions, parsedValues]);
+
+  const requestClose = useCallback(async () => {
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    const confirmed = await confirm({
+      title: "放弃未保存的评分？",
+      body: "已修改的评分与备注不会保存。",
+      confirmLabel: "放弃并离开",
+      danger: true,
+    });
+    if (confirmed) onClose();
+  }, [confirm, dirty, onClose]);
+
+  const blocker = useBlocker(dirty && open);
+
+  useEffect(() => {
+    if (blocker.state !== "blocked" || promptOpen.current) return;
+    promptOpen.current = true;
+    void confirm({
+      title: "离开评分弹窗？",
+      body: "当前评分尚未保存，离开后修改将丢失。",
+      confirmLabel: "放弃并离开",
+      danger: true,
+    }).then((confirmed) => {
+      promptOpen.current = false;
+      if (confirmed) blocker.proceed();
+      else blocker.reset();
+    });
+  }, [blocker, confirm]);
+
+  useEffect(() => {
+    if (!dirty || !open) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty, open]);
+
+  const save = async () => {
+    if (!model || !detail || saving || !dirty || Object.keys(errors).length > 0) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      for (const dimension of dimensions) {
+        const row = draft[dimension.id];
+        const base = original[dimension.id];
+        if (!row || !base) continue;
+        const parsed = parseValue(row.value);
+        if (parsed.value == null) {
+          if (base.value != null) await api.deleteScore(model.slug, dimension.id);
+        } else if (base.value == null || parsed.value !== base.value || row.note !== base.note) {
+          await api.putScore(model.slug, dimension.id, parsed.value, row.note);
+        }
+      }
+      toast("评分已保存");
+      onSaved();
+      onClose();
+    } catch (error) {
+      setSaveError(errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const invalid = Object.keys(errors).length > 0;
+
+  return (
+    <Dialog open={open} width="wide" labelledBy="score-title" onRequestClose={() => void requestClose()}>
+      <DialogHeader
+        titleId="score-title"
+        kicker={model?.vendor ? `${model.vendor} / 评分` : "评分"}
+        title={model?.name ?? "评分"}
+        onClose={() => void requestClose()}
+      />
+      <div className={ui.dialogBody}>
+        <div className={styles.summary} aria-live="polite">
+          <div className={styles.summaryCell}>
+            <span className={styles.summaryLabel}>综合分</span>
+            <strong className={styles.summaryValue}>{formatScore(preview?.score ?? null)}</strong>
+          </div>
+          <div className={styles.summaryCell}>
+            <span className={styles.summaryLabel}>综合排名</span>
+            <strong className={styles.summaryValue}>{rankLabel(preview?.rank ?? null)}</strong>
+          </div>
+          <div className={styles.summaryCell}>
+            <span className={styles.summaryLabel}>覆盖率</span>
+            <strong className={styles.summaryValue}>
+              {formatPercent(preview?.coverage ?? 0)}
+              {preview?.provisional ? <span className={ui.tag}>暂定</span> : null}
+            </strong>
+          </div>
+          <div className={styles.summaryCell}>
+            <span className={styles.summaryLabel}>已评分维度</span>
+            <strong className={styles.summaryValue}>
+              {preview?.scoredCount ?? 0} / {dimensions.length}
+            </strong>
+          </div>
+        </div>
+
+        {loading ? (
+          <p className={styles.status}>正在加载评分…</p>
+        ) : loadError ? (
+          <p className={styles.statusError} role="alert">
+            {loadError}
+          </p>
+        ) : dimensions.length === 0 ? (
+          <p className={styles.status}>没有可评分的维度。请先在设置中为维度设置权重。</p>
+        ) : (
+          <ul className={styles.rows}>
+            {dimensions.map((dimension, index) => {
+              const row = draft[dimension.id];
+              if (!row) return null;
+              const error = errors[dimension.id];
+              return (
+                <li className={styles.row} key={dimension.id}>
+                  <div className={styles.rowMain}>
+                    <div className={styles.rowIdentity}>
+                      <span className={styles.rowName}>{dimension.name}</span>
+                      <span className={styles.rowWeight}>权重 {dimension.weight}</span>
+                    </div>
+                    <input
+                      className={styles.scoreInput}
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.1"
+                      placeholder="—"
+                      value={row.value}
+                      ref={index === 0 ? firstInput : undefined}
+                      aria-label={`${dimension.name} 评分`}
+                      aria-invalid={Boolean(error)}
+                      onChange={(event) => updateRow(dimension.id, { value: event.target.value })}
+                      onBlur={(event) => {
+                        const parsed = parseValue(event.target.value);
+                        if (parsed.error == null && parsed.value != null) {
+                          updateRow(dimension.id, { value: String(parsed.value) });
+                        }
+                      }}
+                    />
+                    <IconButton
+                      label={row.openNote ? `收起 ${dimension.name} 评分备注` : `展开 ${dimension.name} 评分备注`}
+                      active={row.openNote}
+                      onClick={() => updateRow(dimension.id, { openNote: !row.openNote })}
+                    >
+                      <Icon name="note" />
+                    </IconButton>
+                  </div>
+                  {row.openNote ? (
+                    <textarea
+                      className={styles.noteInput}
+                      value={row.note}
+                      maxLength={500}
+                      placeholder="测试条件与判断依据"
+                      aria-label={`${dimension.name} 评分备注`}
+                      onChange={(event) => updateRow(dimension.id, { note: event.target.value })}
+                    />
+                  ) : null}
+                  {error ? (
+                    <p className={styles.rowError} role="alert">
+                      {error}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      <div className={ui.dialogFoot}>
+        <div className={styles.footNote}>
+          <span>非负、不设上限，保留一位小数</span>
+          {saveError ? (
+            <span className={styles.saveError} role="alert">
+              {saveError}
+            </span>
+          ) : null}
+        </div>
+        <div className={ui.actions}>
+          <Button onClick={() => void requestClose()}>取消</Button>
+          <Button variant="primary" onClick={() => void save()} disabled={!dirty || invalid || saving || loading || Boolean(loadError)}>
+            {saving ? "保存中…" : "保存评分"}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}

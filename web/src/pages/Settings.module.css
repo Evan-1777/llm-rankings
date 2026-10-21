@@ -1,0 +1,381 @@
+.tabs {
+  display: flex;
+  gap: 30px;
+  margin-top: 8px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.tab {
+  padding: 13px 0;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  transition: color 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.activeTab {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.panel {
+  padding-top: 24px;
+}
+
+.panelHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+}
+
+.panelIntro {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.list {
+  border-top: 1px solid var(--ink);
+}
+
+.listHead {
+  height: 42px;
+  border-bottom: 1px solid var(--ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  align-items: center;
+}
+
+.dimCols {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 80px 120px 132px;
+  gap: 16px;
+}
+
+.modelCols {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 80px 132px;
+  gap: 16px;
+}
+
+.actionsHead {
+  text-align: right;
+}
+
+.dimRow,
+.modelRow {
+  display: grid;
+  gap: 16px;
+  align-items: center;
+  min-height: 76px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.dimRow {
+  grid-template-columns: 44px minmax(0, 1fr) 80px 120px 132px;
+}
+
+.modelRow {
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 80px 132px;
+}
+
+.dimRow:hover,
+.modelRow:hover {
+  background: var(--surface);
+}
+
+.archived {
+  opacity: 0.55;
+}
+
+.index {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+
+.nameBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.itemName {
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.itemMeta {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.weight {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+}
+
+.statusTag {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.statusIdle {
+  color: var(--ink-3);
+}
+
+.statusLive {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-2);
+}
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.slug {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scoreCount {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.dataGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.dataGrid div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px 24px;
+  border-left: 1px solid var(--rule);
+}
+
+.dataGrid div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.dataGrid span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.dataGrid strong {
+  font-family: var(--font-mono);
+  font-size: 52px;
+  line-height: 0.9;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.exportBox {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.exportTitle {
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.exportText {
+  margin-top: 8px;
+  max-width: 520px;
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ink-3);
+}
+
+.backupNote {
+  margin-top: 14px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.footerNote {
+  margin-top: 56px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+.footerNote a {
+  color: var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+@media (max-width: 900px) {
+  .dimCols,
+  .dimRow {
+    grid-template-columns: 34px minmax(0, 1fr) 60px 100px 124px;
+    gap: 10px;
+  }
+
+  .modelCols,
+  .modelRow {
+    grid-template-columns: 34px minmax(0, 1.3fr) minmax(0, 0.9fr) 64px 124px;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 760px) {
+  .tabs {
+    gap: 22px;
+  }
+
+  .panel {
+    padding-top: 18px;
+  }
+
+  .panelHead {
+    padding-bottom: 12px;
+  }
+
+  .panelIntro {
+    gap: 10px;
+  }
+
+  .listHead {
+    display: none;
+  }
+
+  .dimRow,
+  .modelRow {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "index name actions"
+      "index meta actions";
+    gap: 4px 10px;
+    min-height: 0;
+    padding: 14px 0;
+  }
+
+  .index {
+    grid-area: index;
+    align-self: start;
+    padding-top: 4px;
+  }
+
+  .nameBlock {
+    grid-area: name;
+  }
+
+  .weight {
+    grid-area: meta;
+    font-size: 12px;
+  }
+
+  .weight::before {
+    content: "权重 ";
+    font-family: var(--font-sans);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+
+  .scoreCount::before {
+    content: "评分 ";
+    font-family: var(--font-sans);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+
+  .status {
+    grid-area: meta;
+    justify-self: end;
+  }
+
+  .slug {
+    grid-area: meta;
+    justify-self: start;
+  }
+
+  .scoreCount {
+    grid-area: meta;
+    justify-self: end;
+  }
+
+  .rowActions {
+    grid-area: actions;
+    align-self: center;
+  }
+
+  .dataGrid div {
+    padding: 16px 14px;
+  }
+
+  .dataGrid strong {
+    font-size: 38px;
+  }
+
+  .exportBox {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .footerNote {
+    margin-top: 40px;
+  }
+}

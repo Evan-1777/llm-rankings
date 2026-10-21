@@ -1,0 +1,22 @@
+# dependencies and build output
+node_modules/
+web/dist/*
+!web/dist/.gitkeep
+
+# runtime data and secrets
+.devdata/
+*.db
+*.db-shm
+*.db-wal
+.env
+deploy/.env
+
+# tooling and OS noise
+.gocache/
+.pnpm-store/
+temp/
+*.log
+/server
+/llm-rank
+.DS_Store
+*.swp

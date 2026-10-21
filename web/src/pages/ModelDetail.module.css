@@ -1,0 +1,268 @@
+.title {
+  font-size: clamp(40px, 4.8vw, 64px);
+  overflow-wrap: anywhere;
+}
+
+.headSide {
+  width: 100%;
+}
+
+.scoreLine {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.scoreLine span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+.scoreLine strong {
+  font-family: var(--font-mono);
+  font-size: clamp(56px, 6.4vw, 90px);
+  line-height: 0.82;
+  letter-spacing: -0.06em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 12px;
+}
+
+.facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+  border-left: 1px solid var(--rule);
+  min-width: 0;
+}
+
+.facts div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.facts span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.facts b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.actionsBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-2);
+}
+
+.textLink:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.dimTable {
+  width: 100%;
+  min-width: 560px;
+}
+
+.dimTable th {
+  height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ink);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.dimTable th:first-child,
+.dimTable td:first-child {
+  padding-left: 0;
+}
+
+.dimTable td {
+  height: 66px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+
+.dimTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dimName {
+  font-size: 15px;
+}
+
+.weight {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.num {
+  text-align: right;
+}
+
+.score {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.barCol {
+  width: 36%;
+  min-width: 180px;
+}
+
+.barTrack {
+  display: block;
+  height: 8px;
+  background: var(--rule);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.private {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 44px;
+  padding: 20px 0 8px;
+  border-top: 1px solid var(--ink);
+}
+
+.privateHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.private p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .hideMobile {
+    display: none;
+  }
+
+  .title {
+    font-size: clamp(34px, 10vw, 44px);
+  }
+
+  .scoreLine strong {
+    font-size: 64px;
+  }
+
+  .actionsBar {
+    align-items: flex-start;
+  }
+
+  .navLinks {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .dimTable {
+    min-width: 0;
+  }
+
+  .dimTable th,
+  .dimTable td {
+    padding: 0 8px;
+  }
+
+  .dimTable th:first-child,
+  .dimTable td:first-child {
+    padding-left: 0;
+  }
+
+  .dimTable td {
+    height: 56px;
+  }
+
+  .dimName {
+    font-size: 14px;
+  }
+
+  .score {
+    font-size: 18px;
+  }
+
+  .barCol {
+    display: none;
+  }
+
+  .private {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 32px;
+  }
+}

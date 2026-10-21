@@ -1,0 +1,251 @@
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 0 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pickerRow {
+  display: flex;
+  gap: 8px;
+}
+
+.pickerRow select {
+  width: 260px;
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  margin-top: 8px;
+}
+
+.table {
+  width: 100%;
+  min-width: 720px;
+  table-layout: fixed;
+}
+
+.dimHead {
+  width: 220px;
+  padding: 18px 12px 18px 0;
+  border-bottom: 1px solid var(--ink);
+  vertical-align: bottom;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.modelHead {
+  width: auto;
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--ink);
+  border-left: 1px solid var(--rule);
+  vertical-align: top;
+  text-align: left;
+  font-weight: 400;
+}
+
+.modelHeadTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modelName {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.vendor {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.modelScore {
+  margin-top: 18px;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.coverageRow {
+  margin-top: 10px;
+}
+
+.rowHead {
+  padding: 14px 12px 14px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+  text-align: left;
+  font-weight: 400;
+}
+
+.rowHeadInner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+}
+
+.weight {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.valueCell {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.best {
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.cards {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .table {
+    min-width: 640px;
+  }
+}
+
+@media (max-width: 760px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 22px 0 16px;
+  }
+
+  .pickerRow select {
+    width: 100%;
+  }
+
+  .pickerRow {
+    width: 100%;
+  }
+
+  .count {
+    text-align: right;
+  }
+
+  .tableWrap {
+    display: none;
+  }
+
+  .cards {
+    display: grid;
+    gap: 24px;
+    margin-top: 8px;
+  }
+
+  .card {
+    border-top: 1px solid var(--ink);
+    padding-top: 16px;
+  }
+
+  .cardHead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .cardScore {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .cardScore strong {
+    font-family: var(--font-mono);
+    font-size: 40px;
+    line-height: 0.9;
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cardDims {
+    margin: 0;
+  }
+
+  .cardDims div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .cardDims dt {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .cardDims dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cardBest dd {
+    color: var(--signal);
+    font-weight: 600;
+  }
+}

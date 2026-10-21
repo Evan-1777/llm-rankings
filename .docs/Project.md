@@ -5,82 +5,155 @@
 ## 概述
 
 - **定位**：LLM Rank，一个用于个人记录、评分与比较 LLM 表现的自托管 Web 服务。
-- **阶段**：初始化。架构与范围已确认，应用代码尚未落地。
-- **首版范围**：单管理员维护模型、维度、评分方案与评分；公开只读排行；加权综合分与覆盖率；模型详情、对比、评分工作台；JSON 导出；Docker Compose 与 GitHub Actions 镜像。
-- **非目标**：多用户/注册/OAuth、评论社区、自动抓取 benchmark、AI 自动评分、原生 App、实时协作、国际化、付费。
+- **阶段**：首版实现完成（2026-10-22）。代码、测试、部署配置与 CI 已落地；生产镜像由 GitHub Actions 构建。
+- **首版范围**：单管理员维护模型、维度、全局维度权重与评分；公开只读排行；加权综合分与覆盖率；模型详情、对比、评分工作台；JSON 导出；Docker Compose 与 GHCR 镜像。
+- **非目标**：多用户/注册/OAuth、评论社区、自动抓取 benchmark、AI 自动评分、原生 App、实时协作、国际化、付费、暗色主题、评分历史、JSON 导入。
 
 ## 环境与运行
 
 - **平台**：Linux x86_64（WSL 文件系统），开发与测试在本机；生产为个人 VPS。
 - **Shell**：bash
-- **运行时**：Go 1.27；Node 24 + pnpm 11
-- **版本管理**：git；`master` 为当前分支
-- **依赖**：Go 模块；前端 pnpm。生产镜像由 CI 构建，本机无 Docker。
-- **运行**（实现后）：
-  - `pnpm --dir web install && pnpm --dir web build`
-  - `go run ./cmd/server`
-  - 环境变量：`PORT`、`DB_PATH`、`ADMIN_PASSWORD_HASH`、`SESSION_SECRET`、`PUBLIC_READ`、`COOKIE_SECURE`
-- **测试**（实现后）：
+- **运行时**：Go 1.27；Node 24 + pnpm 11.23；SQLite（modernc.org/sqlite，纯 Go，无 CGO）；React 19 + TypeScript 7 + Vite 8。
+- **版本管理**：git；`master` 为当前分支。
+- **依赖**：Go 模块（`go.mod` / `go.sum`）；前端 pnpm（`web/pnpm-lock.yaml`）。生产镜像由 CI 构建，本机无 Docker。
+- **本地运行**：
+  1. `pnpm --dir web install`
+  2. `pnpm --dir web build`（写入 `web/dist`，供 Go 内嵌）
+  3. 设置必需环境变量后运行 `go run ./cmd/server`
+  4. 开发前端时可运行 `pnpm --dir web dev`，Vite 将 `/api` 代理到 `127.0.0.1:8080`
+- **环境变量**：
+  - `PORT`：监听端口，默认 8080。
+  - `DB_PATH`：SQLite 文件路径，默认 `./llm-rank.db`；生产为 `/data/llm-rank.db`。
+  - `ADMIN_PASSWORD_HASH`：必填，bcrypt 哈希；缺失或格式错误时启动失败。
+  - `SESSION_SECRET`：必填，至少 32 字节；用于 HMAC 签名 Cookie。
+  - `COOKIE_SECURE`：默认 false；HTTPS 生产环境设为 true。
+  - `TRUST_PROXY`：默认 false；仅当反向代理覆盖 `X-Forwarded-For` 时设为 true。
+- **测试**：
   - `go test ./...`
-  - `pnpm --dir web typecheck && pnpm --dir web build`
-  - 浏览器验收连接用户开启的 9222 实例
-- ★ 本机未安装 Docker；不本地构建镜像，`docker compose` 与镜像构建由 GitHub Actions/VPS 验证。
-- ★ 前端构建产物通过 `//go:embed` 进入 Go 二进制；生产只运行一个进程。
-- ★ SQLite 位于 `DB_PATH`（生产 `/data/llm-rank.db`），WAL 模式；备份以卷或 JSON 导出为准。
+  - `go vet ./...`
+  - `pnpm --dir web typecheck`
+  - `pnpm --dir web test`（Node 原生 `node --test`）
+  - `pnpm --dir web build`
+  - `CGO_ENABLED=0 go build ./cmd/server`
+- **部署**：
+  - CI 将镜像推送到 `ghcr.io/<owner>/llm-rank`。
+  - 复制 `deploy/.env.example` 为 `deploy/.env`，填写镜像、密码哈希与会话密钥。
+  - `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d`。
+  - 容器只绑定 `127.0.0.1:8080`，由宿主反向代理终止 TLS；SQLite 使用命名卷 `llm-rank-data` 挂载到 `/data`。
+- ★ 本机未安装 Docker；不本地构建镜像，镜像构建由 GitHub Actions 验证。
+- ★ 前端构建产物通过 `//go:embed all:dist` 进入 Go 二进制；生产只运行一个进程。
+- ★ SQLite 使用 WAL、外键与单连接；备份以卷或 JSON 导出为准。
 
 ## 结构
 
-当前仓库只有文档，应用代码尚未创建。目标结构：
-
 ```
-cmd/server/          # 启动、配置、优雅关闭
+cmd/server/main.go             # 配置、数据库、HTTP 服务、优雅关闭
 internal/
-  api/               # 路由、处理器、中间件、JSON 错误
-  auth/              # 密码哈希、会话签名、登录限流
-  domain/            # 评分、权重、覆盖率、排名纯函数
-  store/             # SQLite 连接、迁移、查询
-migrations/          # 只建表的 append-only SQL
-web/                 # React + TypeScript + Vite
-deploy/              # compose、环境变量示例、部署说明
-.github/workflows/   # CI 与镜像构建
+  api/                         # 路由、处理器、中间件、JSON 错误、静态资源
+  auth/                        # bcrypt 会话、HMAC Cookie、登录限流
+  config/                      # 环境变量解析与校验
+  domain/                      # 评分、权重、覆盖率、排名纯函数
+  store/                       # SQLite 连接、迁移、查询与错误类型
+migrations/
+  001_init.sql                 # 建表，无种子数据
+  embed.go                     # 迁移文件内嵌
+web/
+  src/api/                     # fetch 客户端与类型
+  src/components/              # 弹窗、表单、表格、页头等共享组件
+  src/domain/                  # 与 Go 对齐的评分/排序纯函数
+  src/hooks/                   # 异步数据加载
+  src/lib/                     # 格式化、文档标题
+  src/pages/                   # 排行、详情、对比、工作台、设置、登录
+  src/session/                 # 会话上下文与路由保护
+  src/styles/global.css        # 设计令牌、reset、排版
+  public/brand-icon.png        # 页头与站点图标
+  dist/.gitkeep                # 构建前占位
+  embed.go                     # 内嵌 dist
+deploy/
+  compose.yaml                 # 单 app 容器 + 数据卷
+  .env.example                 # 生产环境变量模板
+.github/workflows/ci.yml       # 测试、构建、GHCR 推送
+Dockerfile
+.dockerignore
 ```
 
-- **数据流**：浏览器 → `/api` → `api` → `domain` / `store` → SQLite；响应原路返回。`web/dist` 由 Go 内嵌，非 API 路径回落到 `index.html`。
-- **依赖方向**：`api → domain`、`api → store`；`domain` 不依赖 `store` 或 `api`；`store` 不依赖 `api`。评分与排名在 `domain` 中计算，HTTP 层只负责解析与序列化。
-- **API 面**：`/api/auth/*`、`/api/bootstrap`、`/api/rankings`、`/api/models`、`/api/models/{slug}/scores`、`/api/dimensions`、`/api/profiles`、`/api/export`、`/api/health`。
-- **当前状态**：目录尚未创建，以上为实现基线。
+- **分层**：`api → domain`、`api → store`；`domain` 不依赖 `store` 或 `api`；`store` 不依赖 `api`。评分与排名在 `domain` 计算，HTTP 层只解析与序列化。
+- **数据流**：浏览器 → `/api` → `api` → `domain` / `store` → SQLite；响应原路返回。非 API 路径由 Go 内嵌的 SPA 接管。
+- **API 面**：
+  - `GET /api/health`
+  - `GET /api/bootstrap`
+  - `POST /api/auth/login`、`POST /api/auth/logout`
+  - `GET /api/rankings`
+  - `GET /api/dimensions`；`POST /api/dimensions`；`PATCH /api/dimensions/{id}`；`POST /api/dimensions/{id}/archive|restore`；`DELETE /api/dimensions/{id}`
+  - `GET /api/models`；`POST /api/models`；`GET /api/models/{slug}`；`PATCH /api/models/{slug}`；`DELETE /api/models/{slug}`
+  - `PUT /api/models/{slug}/scores/{dimensionId}`；`DELETE /api/models/{slug}/scores/{dimensionId}`
+  - `GET /api/export`（管理员）
+- **数据模型**：`dimensions`（名称、描述、0–100 权重、归档时间）、`models`（唯一 slug、名称、厂商、私人备注）、`scores`（模型 + 维度复合主键、非负 REAL、备注、更新时间）。三表外键级联；不插入种子数据。
+- **排名规则**：只计权重 > 0 的启用维度；综合分按已评分维度的权重归一，不设上限，按两位小数展示；单维度评分保留一位小数；覆盖率 = 已评分权重 / 总权重，显示向下截断到一位小数，低于 80% 标记「暂定」；同分按覆盖率高者、名称、slug 排序；未评分模型始终置底；官方排名不随视图排序改变。
+- **认证与安全**：bcrypt 哈希存环境变量；HMAC 签名 `llmrank_session` HttpOnly Cookie，24 小时；登录失败每 IP 15 分钟 5 次；写请求校验 Origin host 与 Host 一致；安全响应头含 CSP、`X-Frame-Options`、`X-Content-Type-Options`、`Referrer-Policy`；公开接口不返回私人备注。
+- **静态资源**：`assets/` 下带哈希文件使用一年 immutable 缓存；其他文件一天；缺失的 `assets/` 与带扩展名路径返回 404，其余路径回落到 `index.html`；API 未知路径返回 JSON 404。
+
+## 前端
+
+- **路由**：`/`（排行）、`/models/:slug`（详情）、`/compare?models=...`（对比）、`/workbench`（工作台）、`/settings?tab=dimensions|models|data`（设置）、`/login`（登录）。
+- **信息架构**：排行表头即排序控件；评分只通过共享评分弹窗；模型只通过共享模型表单创建；设置页独立于排行；工作台按覆盖率升序暴露补测优先级；对比最多 4 个模型，移动端改为纵向卡片。
+- **状态**：每页具备加载骨架、错误重试、空状态与成功反馈；无数据时给出下一步入口（先建维度 / 新增模型 / 去评分）。
+- **视觉**：瑞士/编辑式排版，纸白 `#F2EFE6`、墨黑 `#14130F`、信号红 `#B92A20`；0 圆角、无阴影/渐变、1px 分隔线；桌面 12 栏，内容最大 1500px；移动端表格隐藏维度列，保留排名、模型、综合分、覆盖率与操作；功能文字不小于 10px，移动主按钮 44px，行内图标 34px。
+- **交互细节**：评分弹窗打开后聚焦首个评分输入；未保存改动拦截站内跳转与 `beforeunload`；关闭后焦点回到触发按钮；评分预览实时更新综合分与排名；评分输入拒绝负数、NaN、Infinity，允许 12.5 与更大有限值。
 
 ## 约定
 
 - **语言**：用户可见文本中文；代码标识符、注释、日志英文。
 - **Go**：标准库优先；`net/http` + `ServeMux` 方法路由；`log/slog`；错误向上返回，HTTP 层映射为 `{error:{code,message,fields?}}`。
-- **前端**：函数组件 + hooks；CSS Modules + CSS 自定义属性；不引入 UI 组件库与图表库；图表用 SVG。
-- **数据**：迁移只追加、不改已执行文件；迁移只建表，不插入任何种子数据。
-- **API**：`/api` 前缀；JSON；认证 Cookie `HttpOnly`、`SameSite=Lax`；写请求校验 `Origin`；公开读接口不返回私人备注。
-- **Git**：Conventional Commits 英文类型 + 中文描述；不提交 `.env`、密钥、数据库文件。
+- **前端**：函数组件 + hooks；CSS Modules + CSS 自定义属性；不引入 UI 组件库与图表库；图标使用内联 SVG；不加载外部字体。
+- **数据**：迁移只追加、不改已执行文件；迁移只建表，不插入任何种子数据；评分写入统一四舍五入到一位小数。
+- **API**：`/api` 前缀；JSON；写请求要求 `Content-Type: application/json`；Cookie `HttpOnly`、`SameSite=Lax`；公开读接口不返回私人备注。
+- **Git**：Conventional Commits 英文类型 + 中文描述；不提交 `.env`、密钥、数据库文件或构建产物。
 
 ## 约束与决策
 
 - 2026-10-21 技术栈选 Go + SQLite + React/TS，单二进制部署——个人 VPS 资源有限，避免常驻 Node 与外部数据库；前端仍用 Vite 构建后内嵌。
-- 2026-10-21 数据库零种子数据——不预置维度、方案、模型、评分或任何展示型数据；首次使用由管理员创建，空状态按缺失项给出下一步。
-- 2026-10-21 维度与方案均为运行时 CRUD——新增维度权重默认 0，不改变现有排行；归档保留分数与权重，可恢复；永久删除才级联。允许全部归档/删除，空状态接管；方案保存时至少一个启用维度权重 > 0。
-- 2026-10-21 排名不落库——按方案权重实时计算；综合分只计已评分维度，覆盖率按权重计算；覆盖率低于 80% 标记「暂定」。
+- 2026-10-21 数据库零种子数据——不预置维度、模型、权重、评分或任何展示型数据；首次使用由管理员创建。
+- 2026-10-21 单一全局权重——权重直接属于维度，为 0–100 整数；不设评分方案或方案切换层。新增维度权重默认 0，不改变现有排行并标记「不参与」，需先设权重才进入评分弹窗；归档保留分数与权重，可恢复；永久删除才级联。
+- 2026-10-21 排名不落库——按维度权重实时计算；综合分只计已评分维度，覆盖率按权重计算；低于 80% 暂定；未评分行置底。
+- 2026-10-21 评分不设上限——只要求有限且不小于 0，统一保留一位小数；综合分可超过 10；计算先归一权重再乘分数，避免有限极大值溢出。
+- 2026-10-21 品牌标识——使用用户提供的圆形图标，保持原色，不重绘。
 - 2026-10-21 单管理员 + 公开只读——密码 bcrypt 哈希存环境变量，会话为 HMAC 签名 Cookie；私人备注仅登录可见；不引入用户表。
-- 2026-10-21 瑞士平面风格——纸白/墨黑/信号红、12 栏网格、1px 分隔线、0 圆角、无阴影/渐变；桌面优先的响应式 Web，不用 Flutter Web，不套移动端形态。
-- 2026-10-21 生产只跑 app 容器——TLS 由 VPS 现有反向代理终止；compose 默认绑定 `127.0.0.1:8080`，SQLite 挂载 `/data`；镜像由 GitHub Actions 推送 ghcr。
-- 2026-10-21 首版不含暗色主题、评分历史、JSON 导入、梯队视图——列入 P1，避免首版范围膨胀。
+- 2026-10-21 瑞士平面风格——纸白/墨黑/`#B92A20` 信号红、12 栏、1px 分隔线、0 圆角、无阴影/渐变；正文对比度 ≥4.5:1。
+- 2026-10-22 排名求和按维度顺序而非 map 顺序——避免浮点累加顺序导致展示末位在 8.69/8.70 之间漂移；前端格式使用极小 epsilon 后再取舍。
+- 2026-10-22 移动端表格隐藏维度列，保留核心五列；页面级不横向溢出，宽表只在容器内滚动。
+- 2026-10-22 弹窗打开后聚焦首个可编辑评分输入；关闭时恢复触发按钮焦点；未保存改动同时拦截 SPA 路由与浏览器离开。
+- 2026-10-22 部署由 CI 构建单架构 `linux/amd64` 镜像；容器只监听 loopback，TLS 与域名由宿主反向代理负责；数据库挂载命名卷。
+
+## 测试与验收
+
+- 2026-10-22：`go test ./...` 通过（config、store、domain、auth、api）。
+- 2026-10-22：`go vet ./...` 通过。
+- 2026-10-22：`pnpm --dir web typecheck` 通过；`pnpm --dir web test` 10/10 通过；`pnpm --dir web build` 通过。
+- 2026-10-22：`CGO_ENABLED=0 go build ./cmd/server` 通过。
+- 2026-10-22：浏览器手工验收覆盖 1440 / 1024 / 768 / 390；排行、详情、对比、工作台、设置、登录、评分弹窗与空/错/加载状态可用；页面级无横向溢出；移动端表格与弹窗可用。
+- 未在本地验证：Docker 镜像构建（本机无 Docker）；由 `.github/workflows/ci.yml` 在 GitHub Actions 构建并推送 GHCR。
 
 ## 外部集成
 
-- **GitHub Actions / ghcr.io**：push 时运行 Go 与前端检查并构建镜像；仓库需开启 Packages 写权限。
-- **VPS 反向代理**：由用户现有反向代理提供 HTTPS 与域名，应用只监听本机端口。
+- **GitHub Actions / ghcr.io**：push 到 `master` 或 `v*` 标签时运行测试、构建并推送镜像；PR 构建镜像但不推送。仓库需允许 Packages 写入。
+- **VPS 反向代理**：由现有反向代理提供 HTTPS 与域名；应用只监听 `127.0.0.1:8080`；反代须保留 Host，并在覆盖 `X-Forwarded-For` 时设置 `TRUST_PROXY=true`。
+- **备份**：SQLite 卷备份或管理员 JSON 导出；不提供导入。
 - 无数据库、缓存、对象存储等外部服务。
+
+## 已知限制
+
+- 单管理员、单 SQLite 写连接；不支持并发多用户或水平扩展。
+- 无评分历史、审计日志、JSON 导入、暗色主题、国际化。
+- 评分与模型删除为硬删除；维度归档可恢复，永久删除会级联评分。
+- 浏览器验收为手工执行，无端到端自动化；Go/前端纯函数与 HTTP 集成测试覆盖主要规则。
+- 本机无 Docker，镜像与 Compose 的实际启动需在 CI/VPS 验证。
 
 ## 术语
 
-- **维度**：可增减的评分项，统一 0–10 分。
-- **方案**：一组维度权重，用于按用途生成排行；无默认方案。
-- **覆盖率**：当前方案中已评分维度权重占全部启用维度权重的比例。
+- **维度**：可增减的评分项，评分为不小于 0 的有限数，不设上限。
+- **权重**：全局唯一的维度系数，0–100；不另设评分方案层。
+- **覆盖率**：当前权重中已评分维度权重占全部启用权重的比例。
 - **暂定**：覆盖率低于 80% 的排名标记。
 - **归档**：从展示与计算中移除但保留数据，可恢复；与永久删除不同。
 
@@ -94,4 +167,3 @@ deploy/              # compose、环境变量示例、部署说明
 | 命名、语言、日志、API 规范调整 | 约定 |
 | 新坑、新约束、选型定型 | 约束与决策 |
 | 外部服务接入或下线 | 外部集成 |
-| 新增项目特有名词 | 术语 |

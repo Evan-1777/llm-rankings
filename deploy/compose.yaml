@@ -1,0 +1,20 @@
+services:
+  app:
+    image: ${LLM_RANK_IMAGE:?set LLM_RANK_IMAGE in deploy/.env}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "8080"
+      DB_PATH: /data/llm-rank.db
+    ports:
+      # Keep the app on loopback; terminate TLS in the host reverse proxy.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - llm-rank-data:/data
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+
+volumes:
+  llm-rank-data:

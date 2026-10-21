@@ -1,0 +1,181 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--paper);
+  border-bottom: 1px solid var(--ink);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  height: var(--header-h);
+  gap: 40px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  flex: none;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.wordmark {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.nav {
+  display: flex;
+  align-self: stretch;
+  align-items: stretch;
+  gap: 28px;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  transition: color 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.link:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+
+.sessionPlaceholder {
+  display: block;
+  width: 72px;
+  height: 10px;
+  background: var(--hover);
+  animation: pulse 1.5s var(--ease) infinite;
+}
+
+.admin {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.adminMark {
+  width: 6px;
+  height: 6px;
+  background: var(--signal);
+}
+
+.logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--ink-3);
+}
+
+.logout:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.login {
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--ink);
+  color: var(--ink);
+}
+
+.login:hover {
+  text-decoration: none;
+}
+
+@media (max-width: 900px) {
+  .inner {
+    gap: 24px;
+  }
+
+  .nav {
+    gap: 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  .inner {
+    height: 60px;
+    gap: 18px;
+  }
+
+  .mark {
+    width: 28px;
+    height: 28px;
+  }
+
+  .wordmark {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+  }
+
+  .nav {
+    gap: 16px;
+  }
+
+  .link {
+    font-size: 11px;
+  }
+
+  .session {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .wordmark {
+    display: none;
+  }
+
+  .inner {
+    gap: 14px;
+  }
+
+  .nav {
+    gap: 14px;
+  }
+
+  .admin {
+    font-size: 10px;
+  }
+}
