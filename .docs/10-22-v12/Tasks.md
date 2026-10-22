@@ -1,7 +1,11 @@
 # Tasks：维护模式
 
 **关联 Plan**：`Plan.md` —— 维护模式 v1.0
+**状态**：DONE
+**日期**：2026-10-22
+**完成日期**：2026-10-22
 **总计 Task**：8 个
+**回归测试结论**：`go test ./...`、`go vet ./...`、`CGO_ENABLED=0 go build ./cmd/server` 通过；`pnpm --dir web test` 44/44、`typecheck`、`build` 通过；浏览器验收覆盖 1440/390，维护页、管理员访问、登出与关闭维护后恢复均符合预期。
 
 ---
 
