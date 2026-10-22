@@ -58,6 +58,14 @@ export function Workbench() {
   const [savedCount, setSavedCount] = useState(0);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const promptOpen = useRef(false);
+  const aliveRef = useRef(true);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   const dimensions = data?.dimensions ?? [];
   const models = data?.models ?? [];
@@ -126,6 +134,7 @@ export function Workbench() {
     let applied = 0;
     try {
       for (const change of plan.changes) {
+        if (!aliveRef.current) break;
         if (change.value == null) {
           await api.deleteScore(change.slug, change.dimensionId);
         } else {
@@ -134,10 +143,12 @@ export function Workbench() {
         nextBaseline = commitQuickEdit(nextBaseline, change.slug, change.dimensionId, change.value);
         applied += 1;
       }
+      if (!aliveRef.current) return;
       toast("评分已保存");
       leaveEditing();
       refreshAll();
     } catch (caught) {
+      if (!aliveRef.current) return;
       setBaseline(nextBaseline);
       setSavedCount((current) => current + applied);
       const remaining = plan.changes.length - applied;
@@ -166,15 +177,17 @@ export function Workbench() {
     promptOpen.current = true;
     void confirm({
       title: "离开评分工作台？",
-      body: `快捷编辑还有 ${plan.pendingCount} 项修改尚未提交，离开后这些修改将丢失。`,
-      confirmLabel: "放弃并离开",
+      body: saving
+        ? "正在保存评分。已发出的请求会完成，剩余项不再提交。"
+        : `快捷编辑还有 ${plan.pendingCount} 项修改尚未提交，离开后这些修改将丢失。`,
+      confirmLabel: saving ? "仍要离开" : "放弃并离开",
       danger: true,
     }).then((confirmed) => {
       promptOpen.current = false;
       if (confirmed) blocker.proceed();
       else blocker.reset();
     });
-  }, [blocker, confirm, plan.pendingCount]);
+  }, [blocker, confirm, plan.pendingCount, saving]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -388,12 +401,13 @@ export function Workbench() {
             <Button
               ref={toggleRef}
               aria-pressed={editing}
+              disabled={saving}
               onClick={() => {
                 if (editing) void requestExit();
                 else startEditing();
               }}
             >
-              {editing ? "完成编辑" : "快捷编辑"}
+              快捷编辑
             </Button>
           ) : null}
           {!editing ? (
