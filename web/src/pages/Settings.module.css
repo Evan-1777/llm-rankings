@@ -283,8 +283,26 @@
   cursor: pointer;
 }
 
+.preferenceCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
 .preferenceLabel {
   font-size: 15px;
+}
+
+.preferenceHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
 }
 
 .exportBox {
@@ -457,6 +475,11 @@
   .rowActions {
     grid-area: actions;
     align-self: center;
+  }
+
+  .preference {
+    align-items: flex-start;
+    padding: 18px 0;
   }
 
   .dataGrid div {

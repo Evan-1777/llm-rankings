@@ -10,9 +10,10 @@ import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
 import { barWidth, dimensionMax, dimensionRanks, formatPercent, formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatGapPercentile, scoreRange } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { useSession } from "../session/SessionProvider";
 import styles from "./ModelDetail.module.css";
 
@@ -20,6 +21,7 @@ export function ModelDetail() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
   const session = useSession();
+  const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
   const [editOpen, setEditOpen] = useState(false);
   const { data, loading, error, reload } = useAsyncData(async (signal) => {
     const [detail, rankings] = await Promise.all([api.model(slug, signal), api.rankings(signal)]);
@@ -29,6 +31,10 @@ export function ModelDetail() {
   const scoreRanges = useMemo(
     () => dimensionScoreRanges(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
     [data?.rankings.models, data?.detail.dimensions],
+  );
+  const compositeRange = useMemo(
+    () => scoreRange((data?.rankings.models ?? []).map((model) => model.score)),
+    [data?.rankings.models],
   );
   const ranksByDimension = useMemo(
     () => dimensionRanks(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
@@ -81,8 +87,8 @@ export function ModelDetail() {
       <PageHeading kicker={`${detail.vendor || "模型"} / 模型详情`} title={detail.name} titleClassName={styles.title}>
         <div className={styles.headSide}>
           <div className={styles.scoreLine}>
-            <span>综合分</span>
-            <strong>{formatScore(detail.score)}</strong>
+            <span>{scorePercentageMode ? "综合差距" : "综合分"}</span>
+            <strong>{scorePercentageMode ? formatGapPercentile(detail.score, compositeRange) : formatScore(detail.score)}</strong>
           </div>
           <div className={styles.facts}>
             <div>
@@ -135,7 +141,19 @@ export function ModelDetail() {
 
       <div className={ui.sectionHead}>
         <p className={ui.sectionLabel}>维度得分</p>
-        <span className={`${ui.sectionMeta} ${styles.hideMobile}`}>相对条按最高分归一 / 名次按同维度已评分模型</span>
+        <span className={`${styles.sectionNotes} ${styles.hideMobile}`}>
+          <span className={ui.sectionMeta}>
+            {scorePercentageMode ? "分差百分比 / 1% = 最高分，100% = 最低分" : "相对条按最高分归一 / 名次按同维度已评分模型"}
+          </span>
+          {dimensionScoreEmphasis ? (
+            <span className={ui.legend}>
+              <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />
+              低分红 <span aria-hidden="true">→</span>
+              <span className={`${ui.legendSwatch} ${ui.legendHigh}`} aria-hidden="true" />
+              高分蓝
+            </span>
+          ) : null}
+        </span>
       </div>
 
       {dimensionCount === 0 ? (
@@ -158,7 +176,7 @@ export function ModelDetail() {
                 <th scope="col">维度</th>
                 <th scope="col">权重</th>
                 <th scope="col" className={styles.num}>
-                  得分
+                  {scorePercentageMode ? "差距" : "得分"}
                 </th>
                 <th scope="col" className={`${styles.rankCol} ${styles.num}`}>
                   维度排名

@@ -12,9 +12,10 @@ import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
 import { formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatGapPercentile, scoreRange } from "../lib/scoreEmphasis";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { useSession } from "../session/SessionProvider";
 import styles from "./Compare.module.css";
 
@@ -22,6 +23,7 @@ export function Compare() {
   useDocumentTitle("模型对比");
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(signal), []);
   const session = useSession();
+  const { scorePercentageMode } = useDisplayPreferences();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [candidate, setCandidate] = useState("");
@@ -57,6 +59,7 @@ export function Compare() {
   };
 
   const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
+  const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
 
   let content: ReactNode;
   if (loading && !data) {
@@ -109,7 +112,12 @@ export function Compare() {
                       </IconButton>
                     </div>
                     <span className={styles.vendor}>{model.vendor || "—"}</span>
-                    <div className={styles.modelScore}>{formatScore(model.score)}</div>
+                    <div className={styles.modelScoreBlock}>
+                      {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合差距</span> : null}
+                      <div className={styles.modelScore}>
+                        {scorePercentageMode ? formatGapPercentile(model.score, compositeRange) : formatScore(model.score)}
+                      </div>
+                    </div>
                     <div className={styles.coverageRow}>
                       <Coverage coverage={model.coverage} provisional={model.provisional} />
                     </div>
@@ -152,7 +160,10 @@ export function Compare() {
                 </IconButton>
               </header>
               <div className={styles.cardScore}>
-                <strong>{formatScore(model.score)}</strong>
+                <div className={styles.cardScoreValue}>
+                  {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合差距</span> : null}
+                  <strong>{scorePercentageMode ? formatGapPercentile(model.score, compositeRange) : formatScore(model.score)}</strong>
+                </div>
                 <Coverage coverage={model.coverage} provisional={model.provisional} />
               </div>
               <dl className={styles.cardDims}>
@@ -220,6 +231,7 @@ export function Compare() {
         <p className={styles.count}>
           {selected.length} / 4
           {selected.length >= 4 ? " · 已达上限" : ""}
+          {scorePercentageMode ? " · 分差" : ""}
         </p>
       </div>
 

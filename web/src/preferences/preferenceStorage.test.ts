@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DIMENSION_SCORE_EMPHASIS_KEY,
+  SCORE_PERCENTAGE_MODE_KEY,
   readDimensionScoreEmphasis,
+  readScorePercentageMode,
   writeDimensionScoreEmphasis,
+  writeScorePercentageMode,
 } from "./preferenceStorage.ts";
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -51,4 +54,42 @@ test("unavailable storage keeps the session default without throwing", () => {
   };
   assert.equal(readDimensionScoreEmphasis(blockedRead), true);
   assert.equal(writeDimensionScoreEmphasis(blockedWrite, true), false);
+});
+
+test("percentage mode is opt-in and round-trips under its own key", () => {
+  const storage = fakeStorage();
+  assert.equal(SCORE_PERCENTAGE_MODE_KEY, "llmrank:score-percentage-mode");
+  assert.equal(readScorePercentageMode(storage), false);
+  assert.equal(writeScorePercentageMode(storage, true), true);
+  assert.equal(storage.data.get(SCORE_PERCENTAGE_MODE_KEY), "true");
+  assert.equal(readScorePercentageMode(storage), true);
+  assert.equal(writeScorePercentageMode(storage, false), true);
+  assert.equal(storage.data.get(SCORE_PERCENTAGE_MODE_KEY), "false");
+  assert.equal(readScorePercentageMode(storage), false);
+});
+
+test("percentage mode only accepts the literal string true", () => {
+  assert.equal(readScorePercentageMode(fakeStorage({ [SCORE_PERCENTAGE_MODE_KEY]: "1" })), false);
+  assert.equal(readScorePercentageMode(fakeStorage({ [SCORE_PERCENTAGE_MODE_KEY]: "TRUE" })), false);
+  assert.equal(readScorePercentageMode(fakeStorage({ [SCORE_PERCENTAGE_MODE_KEY]: " " })), false);
+  assert.equal(readScorePercentageMode(null), false);
+  assert.equal(writeScorePercentageMode(null, true), false);
+  assert.equal(
+    readScorePercentageMode({
+      getItem() {
+        throw new Error("blocked");
+      },
+    }),
+    false,
+  );
+});
+
+test("the two display preferences never overwrite each other", () => {
+  const storage = fakeStorage();
+  writeScorePercentageMode(storage, true);
+  assert.equal(readDimensionScoreEmphasis(storage), true);
+  writeDimensionScoreEmphasis(storage, false);
+  assert.equal(readDimensionScoreEmphasis(storage), false);
+  assert.equal(readScorePercentageMode(storage), true);
+  assert.equal(storage.data.size, 2);
 });

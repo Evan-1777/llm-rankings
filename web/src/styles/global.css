@@ -10,6 +10,10 @@
   --signal: #b92a20;
   --signal-bright: #df372a;
   --signal-soft: rgba(185, 42, 32, 0.08);
+  --score-low: #e89a8b;
+  --score-low-rule: #8f1c14;
+  --score-high: #9fcbd2;
+  --score-high-rule: #174f5b;
   --font-sans: "Helvetica Neue", Helvetica, Arial, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SFMono-Regular", "Cascadia Mono", "Roboto Mono", "Liberation Mono", Menlo, monospace;
   --shell: 1500px;

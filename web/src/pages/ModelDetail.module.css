@@ -108,6 +108,13 @@
   border-bottom: 1px solid var(--ink);
 }
 
+.sectionNotes {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .dimTable {
   width: 100%;
   min-width: 560px;

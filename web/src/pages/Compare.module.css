@@ -97,13 +97,33 @@
   color: var(--ink-3);
 }
 
-.modelScore {
+.modelScoreBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 18px;
+}
+
+.modelScore {
   font-family: var(--font-mono);
   font-size: 34px;
   line-height: 0.9;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
+}
+
+.modelScoreLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.cardScoreValue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .coverageRow {

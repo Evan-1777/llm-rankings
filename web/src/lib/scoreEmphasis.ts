@@ -1,6 +1,3 @@
-export const MIN_EMPHASIS_ALPHA = 0.06;
-export const MAX_EMPHASIS_ALPHA = 0.18;
-
 export interface ScoreRow {
   scores: Record<string, number>;
 }
@@ -10,33 +7,71 @@ export interface ScoreRange {
   max: number;
 }
 
-/**
- * Full-board range per dimension, used only for display. Dimensions without at
- * least two distinct valid values are omitted so equal scores stay neutral.
- */
+export interface ScoreTone {
+  direction: "low" | "high";
+  strength: number;
+}
+
+/** Band around the midpoint that stays neutral, so middle scores keep the paper background. */
+const NEUTRAL_BAND = 0.04;
+
+/** Lowest visible tone strength; off-centre scores never fade back into the paper. */
+const MIN_TONE_STRENGTH = 0.18;
+
+/** Full-board range of one comparison set, used only for display. Fewer than two distinct valid values have no range. */
+export function scoreRange(values: Iterable<number | null | undefined>): ScoreRange | null {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (value == null || !Number.isFinite(value) || value < 0) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return max > min ? { min, max } : null;
+}
+
+/** Full-board range per dimension, used only for display. Dimensions without at least two distinct valid values are omitted so equal scores stay neutral. */
 export function dimensionScoreRanges(rows: readonly ScoreRow[], dimensionIds: readonly number[]): Map<number, ScoreRange> {
   const ranges = new Map<number, ScoreRange>();
   for (const id of dimensionIds) {
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
-    for (const row of rows) {
-      const value = row.scores[String(id)];
-      if (value == null || !Number.isFinite(value) || value < 0) continue;
-      if (value < min) min = value;
-      if (value > max) max = value;
-    }
-    if (max > min) ranges.set(id, { min, max });
+    const range = scoreRange(rows.map((row) => row.scores[String(id)]));
+    if (range) ranges.set(id, range);
   }
   return ranges;
 }
 
-/** Maps a score to the ink background alpha, or null when the score is not emphasisable. */
-export function scoreEmphasisAlpha(value: number | null | undefined, range: ScoreRange | undefined): number | null {
+/** Distance from the best score, where the highest score is 1% and the lowest is 100%. */
+export function gapPercentile(value: number | null | undefined, range: ScoreRange | null | undefined): number | null {
+  if (range == null || value == null || !Number.isFinite(value) || value < 0) return null;
+  const span = range.max - range.min;
+  if (!(span > 0)) return null;
+  // Divide before multiplying so scores near Number.MAX_VALUE cannot overflow.
+  const gap = 1 + 99 * ((range.max - value) / span);
+  if (!Number.isFinite(gap)) return null;
+  return Math.min(100, Math.max(1, gap));
+}
+
+/** Formats the gap percentile with one decimal; only real extremes may render as 1% or 100%. */
+export function formatGapPercentile(value: number | null | undefined, range: ScoreRange | null | undefined): string {
+  const gap = gapPercentile(value, range);
+  if (gap == null || range == null) return "—";
+  const best = value === range.max;
+  const worst = value === range.min;
+  let rounded = Math.round(gap * 10) / 10;
+  if (!best && rounded <= 1) rounded = 1.1;
+  if (!worst && rounded >= 100) rounded = 99.9;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+/** Tone of a score inside its range: warm red when low, cool blue when high, nothing near the middle. */
+export function scoreEmphasisTone(value: number | null | undefined, range: ScoreRange | null | undefined): ScoreTone | null {
   if (range == null || value == null || !Number.isFinite(value) || value < 0) return null;
   const span = range.max - range.min;
   if (!(span > 0)) return null;
   const position = Math.min(1, Math.max(0, (value - range.min) / span));
-  const alpha = MIN_EMPHASIS_ALPHA + (MAX_EMPHASIS_ALPHA - MIN_EMPHASIS_ALPHA) * position;
-  if (!Number.isFinite(alpha)) return null;
-  return Math.min(MAX_EMPHASIS_ALPHA, Math.max(MIN_EMPHASIS_ALPHA, alpha));
+  if (Math.abs(position - 0.5) < NEUTRAL_BAND) return null;
+  return {
+    direction: position < 0.5 ? "low" : "high",
+    strength: MIN_TONE_STRENGTH + (1 - MIN_TONE_STRENGTH) * Math.abs(position * 2 - 1),
+  };
 }

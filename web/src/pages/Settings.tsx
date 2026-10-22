@@ -49,7 +49,7 @@ export function Settings() {
     return { dimensions: dimensions.dimensions, models: models.models };
   }, []);
   const session = useSession();
-  const { dimensionScoreEmphasis, setDimensionScoreEmphasis } = useDisplayPreferences();
+  const { dimensionScoreEmphasis, setDimensionScoreEmphasis, scorePercentageMode, setScorePercentageMode } = useDisplayPreferences();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -519,7 +519,29 @@ export function Settings() {
           </div>
         </div>
         <label className={styles.preference}>
-          <span className={styles.preferenceLabel}>维度得分强调</span>
+          <span className={styles.preferenceCopy}>
+            <span className={styles.preferenceLabel}>百分比模式</span>
+            <span className={styles.preferenceHint}>1% = 最高分 · 100% = 最低分</span>
+          </span>
+          <span className={ui.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={scorePercentageMode}
+              onChange={(event) => setScorePercentageMode(event.target.checked)}
+            />
+            {scorePercentageMode ? "开启" : "关闭"}
+          </span>
+        </label>
+        <label className={styles.preference}>
+          <span className={styles.preferenceCopy}>
+            <span className={styles.preferenceLabel}>维度得分强调</span>
+            <span className={styles.preferenceHint}>
+              <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />
+              低分红 <span aria-hidden="true">→</span>
+              <span className={`${ui.legendSwatch} ${ui.legendHigh}`} aria-hidden="true" />
+              高分蓝
+            </span>
+          </span>
           <span className={ui.checkboxRow}>
             <input
               type="checkbox"

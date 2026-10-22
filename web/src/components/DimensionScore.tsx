@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ScoreRange } from "../lib/scoreEmphasis";
-import { scoreEmphasisAlpha } from "../lib/scoreEmphasis";
+import { formatGapPercentile, scoreEmphasisTone } from "../lib/scoreEmphasis";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { formatDimension } from "../domain/ranking";
 import styles from "./DimensionScore.module.css";
@@ -11,14 +11,22 @@ interface DimensionScoreProps {
   className?: string;
 }
 
-/** One read-only dimension value with the shared ink emphasis background. */
+/** One read-only dimension value with the shared score/gap format and the red-blue tone background. */
 export function DimensionScore({ value, range, className }: DimensionScoreProps) {
-  const { dimensionScoreEmphasis } = useDisplayPreferences();
-  const alpha = dimensionScoreEmphasis ? scoreEmphasisAlpha(value, range) : null;
-  const style: CSSProperties | undefined = alpha == null ? undefined : { backgroundColor: `rgba(20, 19, 15, ${alpha})` };
+  const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
+  const tone = dimensionScoreEmphasis ? scoreEmphasisTone(value, range) : null;
+  const low = tone?.direction === "low";
+  const style: CSSProperties | undefined =
+    tone == null
+      ? undefined
+      : ({
+          "--tone-bg": low ? "var(--score-low)" : "var(--score-high)",
+          "--tone-mix": `${Math.round(tone.strength * 100)}%`,
+          "--tone-rule": low ? "var(--score-low-rule)" : "var(--score-high-rule)",
+        } as CSSProperties);
   return (
-    <span className={className ? `${styles.score} ${className}` : styles.score} style={style}>
-      {formatDimension(value)}
+    <span className={[styles.score, tone ? styles.tone : "", className ?? ""].filter(Boolean).join(" ")} style={style}>
+      {scorePercentageMode ? formatGapPercentile(value, range) : formatDimension(value)}
     </span>
   );
 }

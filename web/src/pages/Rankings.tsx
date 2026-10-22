@@ -14,9 +14,10 @@ import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
 import { dimensionKey, formatScore, sortRows, type SortDir } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatGapPercentile, scoreRange } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { useSession } from "../session/SessionProvider";
 import styles from "./Rankings.module.css";
 
@@ -83,6 +84,7 @@ export function Rankings() {
   useDocumentTitle("综合排行");
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(signal), []);
   const session = useSession();
+  const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
   const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -97,6 +99,7 @@ export function Rankings() {
   const compareSlugs = resolveCompare(params, models);
   const sortedModels = useMemo(() => sortRows(models, sort.key, sort.dir), [models, sort.key, sort.dir]);
   const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
+  const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
 
   const updateSort = (key: string) => {
     const next = new URLSearchParams(params);
@@ -193,7 +196,14 @@ export function Rankings() {
                     </span>
                   </th>
                   <SortHeader label="模型" className={styles.modelCol} active={sort.key === "model"} dir={sort.dir} onClick={() => updateSort("model")} />
-                  <SortHeader label="综合分" className={styles.scoreCol} right active={sort.key === "score"} dir={sort.dir} onClick={() => updateSort("score")} />
+                  <SortHeader
+                    label={scorePercentageMode ? "综合差距" : "综合分"}
+                    className={styles.scoreCol}
+                    right
+                    active={sort.key === "score"}
+                    dir={sort.dir}
+                    onClick={() => updateSort("score")}
+                  />
                   <SortHeader label="覆盖率" className={styles.coverageCol} active={sort.key === "coverage"} dir={sort.dir} onClick={() => updateSort("coverage")} />
                   {dimensions.map((dimension) => (
                     <SortHeader
@@ -226,7 +236,9 @@ export function Rankings() {
                         </Link>
                         <span className={styles.vendor}>{model.vendor || "—"}</span>
                       </td>
-                      <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>{formatScore(model.score)}</td>
+                      <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
+                        {scorePercentageMode ? formatGapPercentile(model.score, compositeRange) : formatScore(model.score)}
+                      </td>
                       <td className={styles.td}>
                         <Coverage coverage={model.coverage} provisional={model.provisional} />
                       </td>
@@ -301,7 +313,15 @@ export function Rankings() {
       <div className={styles.billHead}>
         <div className={styles.billIntro}>
           <p className={ui.sectionLabel}>当前榜单</p>
-          <span className={ui.sectionMeta}>加权平均 / 全部模型</span>
+          <span className={ui.sectionMeta}>{scorePercentageMode ? "分差百分比 / 1% = 最高分" : "加权平均 / 全部模型"}</span>
+          {dimensionScoreEmphasis ? (
+            <span className={ui.legend}>
+              <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />
+              低分红 <span aria-hidden="true">→</span>
+              <span className={`${ui.legendSwatch} ${ui.legendHigh}`} aria-hidden="true" />
+              高分蓝
+            </span>
+          ) : null}
         </div>
         {session.authenticated ? (
           <Button variant="primary" onClick={() => setModelOpen(true)}>
