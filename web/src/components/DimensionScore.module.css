@@ -10,19 +10,23 @@
 
 .tone {
   background-color: color-mix(in srgb, var(--tone-bg) var(--tone-mix), transparent);
-  box-shadow: inset 0 -2px 0 var(--tone-rule);
+  text-decoration: underline;
+  text-decoration-color: var(--tone-rule);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
 }
 
 @media (forced-colors: active) {
   .score {
     background: none !important;
-    box-shadow: none !important;
+    text-decoration: none !important;
   }
 }
 
 @media print {
   .score {
     background: none !important;
-    box-shadow: none !important;
+    text-decoration: none !important;
   }
 }
