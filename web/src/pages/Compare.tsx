@@ -4,13 +4,15 @@ import { api } from "../api/client";
 import type { RankingModel } from "../api/types";
 import { Button, IconButton } from "../components/Button";
 import { Coverage } from "../components/Coverage";
+import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
 import { PageHeading } from "../components/PageHeading";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { formatDimension, formatScore } from "../domain/ranking";
+import { formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
+import { dimensionScoreRanges } from "../lib/scoreEmphasis";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useSession } from "../session/SessionProvider";
@@ -54,18 +56,7 @@ export function Compare() {
     setSelection(selected.filter((model) => model.slug !== slug).map((model) => model.slug));
   };
 
-  const maxByDimension = useMemo(() => {
-    const result: Record<number, number | null> = {};
-    for (const dimension of dimensions) {
-      let max: number | null = null;
-      for (const model of selected) {
-        const value = model.scores[String(dimension.id)];
-        if (value != null && (max == null || value > max)) max = value;
-      }
-      result[dimension.id] = max;
-    }
-    return result;
-  }, [dimensions, selected]);
+  const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
 
   let content: ReactNode;
   if (loading && !data) {
@@ -127,29 +118,21 @@ export function Compare() {
               </tr>
             </thead>
             <tbody>
-              {dimensions.map((dimension) => {
-                const max = maxByDimension[dimension.id];
-                return (
-                  <tr key={dimension.id}>
-                    <th scope="row" className={styles.rowHead}>
-                      <div className={styles.rowHeadInner}>
-                        <span>{dimension.name}</span>
-                        <span className={styles.weight}>{dimension.weight}</span>
-                      </div>
-                    </th>
-                    {selected.map((model) => {
-                      const value = model.scores[String(dimension.id)] ?? null;
-                      const best = value != null && max != null && value === max;
-                      return (
-                        <td key={model.slug} className={`${styles.valueCell} ${best ? styles.best : ""}`}>
-                          {formatDimension(value)}
-                          {best ? <span className="sr-only">最高</span> : null}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+              {dimensions.map((dimension) => (
+                <tr key={dimension.id}>
+                  <th scope="row" className={styles.rowHead}>
+                    <div className={styles.rowHeadInner}>
+                      <span>{dimension.name}</span>
+                      <span className={styles.weight}>{dimension.weight}</span>
+                    </div>
+                  </th>
+                  {selected.map((model) => (
+                    <td key={model.slug} className={styles.valueCell}>
+                      <DimensionScore value={model.scores[String(dimension.id)]} range={scoreRanges.get(dimension.id)} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -173,23 +156,17 @@ export function Compare() {
                 <Coverage coverage={model.coverage} provisional={model.provisional} />
               </div>
               <dl className={styles.cardDims}>
-                {dimensions.map((dimension) => {
-                  const value = model.scores[String(dimension.id)] ?? null;
-                  const max = maxByDimension[dimension.id];
-                  const best = value != null && max != null && value === max;
-                  return (
-                    <div key={dimension.id} className={best ? styles.cardBest : ""}>
-                      <dt>
-                        {dimension.name}
-                        <span className={styles.weight}>{dimension.weight}</span>
-                      </dt>
-                      <dd>
-                        {formatDimension(value)}
-                        {best ? <span className="sr-only">最高</span> : null}
-                      </dd>
-                    </div>
-                  );
-                })}
+                {dimensions.map((dimension) => (
+                  <div key={dimension.id}>
+                    <dt>
+                      {dimension.name}
+                      <span className={styles.weight}>{dimension.weight}</span>
+                    </dt>
+                    <dd>
+                      <DimensionScore value={model.scores[String(dimension.id)]} range={scoreRanges.get(dimension.id)} />
+                    </dd>
+                  </div>
+                ))}
               </dl>
             </article>
           ))}

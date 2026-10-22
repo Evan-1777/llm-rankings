@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { RankingDimension, RankingModel } from "../api/types";
 import { Button, IconButton } from "../components/Button";
 import { Coverage } from "../components/Coverage";
+import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
 import { PageHeading } from "../components/PageHeading";
@@ -11,8 +12,9 @@ import { ScoreDialog } from "../components/ScoreDialog";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { dimensionKey, formatDimension, formatScore, sortRows, type SortDir } from "../domain/ranking";
+import { dimensionKey, formatScore, sortRows, type SortDir } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
+import { dimensionScoreRanges } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useSession } from "../session/SessionProvider";
@@ -94,6 +96,7 @@ export function Rankings() {
   const sort = resolveSort(params, dimensions);
   const compareSlugs = resolveCompare(params, models);
   const sortedModels = useMemo(() => sortRows(models, sort.key, sort.dir), [models, sort.key, sort.dir]);
+  const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
 
   const updateSort = (key: string) => {
     const next = new URLSearchParams(params);
@@ -242,7 +245,7 @@ export function Rankings() {
                       </td>
                       {dimensions.map((dimension) => (
                         <td key={dimension.id} className={`${styles.td} ${styles.dimCol} ${styles.alignRight} ${styles.dimValue}`}>
-                          {formatDimension(model.scores[String(dimension.id)])}
+                          <DimensionScore value={model.scores[String(dimension.id)]} range={scoreRanges.get(dimension.id)} />
                         </td>
                       ))}
                       <td className={`${styles.td} ${styles.actionCol}`}>
@@ -364,7 +367,7 @@ export function Rankings() {
         />
       ) : null}
       {modelOpen ? (
-        <ModelDialog open onClose={() => setModelOpen(false)} onSaved={refreshAll} />
+        <ModelDialog open models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
       ) : null}
     </div>
   );

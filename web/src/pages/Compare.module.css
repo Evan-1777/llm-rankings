@@ -141,11 +141,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.best {
-  color: var(--signal);
-  font-weight: 600;
-}
-
 .cards {
   display: none;
 }
@@ -242,10 +237,5 @@
     font-family: var(--font-mono);
     font-size: 14px;
     font-variant-numeric: tabular-nums;
-  }
-
-  .cardBest dd {
-    color: var(--signal);
-    font-weight: 600;
   }
 }

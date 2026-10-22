@@ -157,10 +157,7 @@
 }
 
 .score {
-  font-family: var(--font-mono);
   font-size: 20px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .barCol {

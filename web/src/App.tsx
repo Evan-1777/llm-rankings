@@ -15,6 +15,7 @@ import { EmptyState } from "./components/States";
 import { ToastProvider } from "./components/Toast";
 import { ConfirmProvider } from "./components/Confirm";
 import { useDocumentTitle } from "./lib/useDocumentTitle";
+import { DisplayPreferencesProvider } from "./preferences/DisplayPreferences";
 import { Compare } from "./pages/Compare";
 import { Login } from "./pages/Login";
 import { ModelDetail } from "./pages/ModelDetail";
@@ -118,9 +119,11 @@ export function App() {
   return (
     <SessionProvider>
       <ToastProvider>
-        <ConfirmProvider>
-          <RouterProvider router={router} />
-        </ConfirmProvider>
+        <DisplayPreferencesProvider>
+          <ConfirmProvider>
+            <RouterProvider router={router} />
+          </ConfirmProvider>
+        </DisplayPreferencesProvider>
       </ToastProvider>
     </SessionProvider>
   );

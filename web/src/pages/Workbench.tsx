@@ -150,7 +150,7 @@ export function Workbench() {
       {scoreTarget && data ? (
         <ScoreDialog open model={scoreTarget} rankings={data} onClose={() => setScoreTarget(null)} onSaved={refreshAll} />
       ) : null}
-      {modelOpen ? <ModelDialog open onClose={() => setModelOpen(false)} onSaved={refreshAll} /> : null}
+      {modelOpen ? <ModelDialog open models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} /> : null}
     </div>
   );
 }

@@ -273,6 +273,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+.preference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.preferenceLabel {
+  font-size: 15px;
+}
+
 .exportBox {
   display: flex;
   align-items: flex-end;

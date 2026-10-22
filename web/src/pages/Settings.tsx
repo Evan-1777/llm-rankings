@@ -14,20 +14,22 @@ import ui from "../components/ui.module.css";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { useSession } from "../session/SessionProvider";
 import styles from "./Settings.module.css";
 import { moveVisibleOrder } from "./dimensionOrder";
 
-type Tab = "dimensions" | "models" | "data";
+type Tab = "dimensions" | "models" | "data" | "display";
 
 const tabLabels: Record<Tab, string> = {
   dimensions: "维度",
   models: "模型",
   data: "数据",
+  display: "显示",
 };
 
 function resolveTab(raw: string | null): Tab {
-  return raw === "models" || raw === "data" ? raw : "dimensions";
+  return raw === "models" || raw === "data" || raw === "display" ? raw : "dimensions";
 }
 
 export function Settings() {
@@ -45,6 +47,7 @@ export function Settings() {
     return { dimensions: dimensions.dimensions, models: models.models };
   }, []);
   const session = useSession();
+  const { dimensionScoreEmphasis, setDimensionScoreEmphasis } = useDisplayPreferences();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -488,6 +491,28 @@ export function Settings() {
         )}
       </section>
     );
+  } else if (tab === "display") {
+    panel = (
+      <section role="tabpanel" id="panel-display" aria-labelledby="tab-display" className={styles.panel}>
+        <div className={styles.panelHead}>
+          <div className={styles.panelIntro}>
+            <p className={ui.sectionLabel}>显示</p>
+            <span className={ui.sectionMeta}>当前浏览器</span>
+          </div>
+        </div>
+        <label className={styles.preference}>
+          <span className={styles.preferenceLabel}>维度得分强调</span>
+          <span className={ui.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={dimensionScoreEmphasis}
+              onChange={(event) => setDimensionScoreEmphasis(event.target.checked)}
+            />
+            {dimensionScoreEmphasis ? "开启" : "关闭"}
+          </span>
+        </label>
+      </section>
+    );
   } else {
     panel = (
       <section role="tabpanel" id="panel-data" aria-labelledby="tab-data" className={styles.panel}>
@@ -568,7 +593,7 @@ export function Settings() {
         onClose={() => setDimensionOpen(false)}
         onSaved={refreshAll}
       />
-      <ModelDialog open={modelOpen} model={modelEdit} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
+      <ModelDialog open={modelOpen} model={modelEdit} models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
 
       <p className={styles.footerNote}>
         维度与模型的永久删除不可恢复。需要留存时先导出 JSON。 <Link to="/">返回排行</Link>

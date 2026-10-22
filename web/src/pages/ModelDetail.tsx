@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { Button } from "../components/Button";
+import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
 import { PageHeading } from "../components/PageHeading";
 import { ScoreDialog } from "../components/ScoreDialog";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
-import { barWidth, dimensionMax, formatDimension, formatPercent, formatScore } from "../domain/ranking";
+import { barWidth, dimensionMax, formatPercent, formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
+import { dimensionScoreRanges } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useSession } from "../session/SessionProvider";
@@ -24,6 +26,10 @@ export function ModelDetail() {
     return { detail, rankings };
   }, [slug]);
   useDocumentTitle(data?.detail.name ?? "模型详情");
+  const scoreRanges = useMemo(
+    () => dimensionScoreRanges(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
+    [data?.rankings.models, data?.detail.dimensions],
+  );
 
   const refreshAll = () => {
     reload();
@@ -162,7 +168,9 @@ export function ModelDetail() {
                   <tr key={dimension.id}>
                     <td className={styles.dimName}>{dimension.name}</td>
                     <td className={styles.weight}>{dimension.weight}</td>
-                    <td className={`${styles.score} ${styles.num}`}>{formatDimension(dimension.value)}</td>
+                    <td className={`${styles.score} ${styles.num}`}>
+                      <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} />
+                    </td>
                     <td className={styles.barCol}>
                       <span className={styles.barTrack} aria-hidden="true">
                         <span className={styles.barFill} style={{ width: `${barWidth(dimension.value, max)}%` }} />

@@ -1,10 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, ApiError, errorMessage } from "../api/client";
 import type { ModelSummary } from "../api/types";
 import { slugFromName } from "../lib/format";
 import { Button } from "./Button";
 import { Dialog, DialogHeader } from "./Dialog";
-import { TextAreaField, TextField } from "./Field";
+import { Field, TextAreaField, TextField } from "./Field";
 import { useToast } from "./Toast";
 import ui from "./ui.module.css";
 import styles from "./ModelDialog.module.css";
@@ -12,16 +12,21 @@ import styles from "./ModelDialog.module.css";
 interface ModelDialogProps {
   open: boolean;
   model?: ModelSummary | null;
+  models?: ReadonlyArray<{ vendor: string }>;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function ModelDialog({ open, model = null, onClose, onSaved }: ModelDialogProps) {
+const EXISTING_VENDOR = "existing:";
+const NEW_VENDOR = "new";
+
+export function ModelDialog({ open, model = null, models = [], onClose, onSaved }: ModelDialogProps) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [vendor, setVendor] = useState("");
   const [notes, setNotes] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
+  const [customVendor, setCustomVendor] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -34,9 +39,41 @@ export function ModelDialog({ open, model = null, onClose, onSaved }: ModelDialo
     setVendor(model?.vendor ?? "");
     setNotes(model?.notes ?? "");
     setSlugTouched(Boolean(model));
+    setCustomVendor(false);
     setErrors({});
     setSaveError("");
   }, [open, model]);
+
+  const vendorChoices = useMemo(() => {
+    const seen = new Set<string>();
+    const choices: string[] = [];
+    const add = (raw: string | undefined) => {
+      const value = raw?.trim() ?? "";
+      if (!value || seen.has(value)) return;
+      seen.add(value);
+      choices.push(value);
+    };
+    for (const item of models) add(item.vendor);
+    add(model?.vendor);
+    return choices.sort((a, b) => a.localeCompare(b, "zh-CN"));
+  }, [models, model]);
+  const hasChoices = vendorChoices.length > 0;
+  const showVendorInput = customVendor || !hasChoices;
+  const vendorSelection = customVendor
+    ? NEW_VENDOR
+    : vendor && vendorChoices.includes(vendor)
+      ? `${EXISTING_VENDOR}${vendor}`
+      : "";
+
+  const onVendorSelect = (value: string) => {
+    if (value === NEW_VENDOR) {
+      setCustomVendor(true);
+      setVendor("");
+      return;
+    }
+    setCustomVendor(false);
+    setVendor(value.startsWith(EXISTING_VENDOR) ? value.slice(EXISTING_VENDOR.length) : "");
+  };
 
   const onNameChange = (value: string) => {
     setName(value);
@@ -116,14 +153,36 @@ export function ModelDialog({ open, model = null, onClose, onSaved }: ModelDialo
                 }}
               />
             )}
-            <TextField
-              id="model-vendor"
-              label="厂商"
-              value={vendor}
-              maxLength={80}
-              error={errors.vendor}
-              onChange={(event) => setVendor(event.target.value)}
-            />
+            {hasChoices ? (
+              <Field label="厂商" htmlFor="model-vendor-select" error={customVendor ? undefined : errors.vendor}>
+                <select
+                  id="model-vendor-select"
+                  className={ui.select}
+                  value={vendorSelection}
+                  aria-invalid={Boolean(!customVendor && errors.vendor)}
+                  onChange={(event) => onVendorSelect(event.target.value)}
+                >
+                  <option value="">不填写</option>
+                  {vendorChoices.map((choice) => (
+                    <option key={choice} value={`${EXISTING_VENDOR}${choice}`}>
+                      {choice}
+                    </option>
+                  ))}
+                  <option value={NEW_VENDOR}>新厂商…</option>
+                </select>
+              </Field>
+            ) : null}
+            {showVendorInput ? (
+              <TextField
+                id="model-vendor"
+                label={hasChoices ? "新厂商" : "厂商"}
+                value={vendor}
+                maxLength={80}
+                autoFocus
+                error={errors.vendor}
+                onChange={(event) => setVendor(event.target.value)}
+              />
+            ) : null}
             <TextAreaField
               id="model-notes"
               label="私人备注"

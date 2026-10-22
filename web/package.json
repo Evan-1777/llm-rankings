@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/domain/ranking.test.ts src/pages/dimensionOrder.test.ts",
+    "test": "node --test src/domain/ranking.test.ts src/pages/dimensionOrder.test.ts src/lib/scoreEmphasis.test.ts src/preferences/preferenceStorage.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

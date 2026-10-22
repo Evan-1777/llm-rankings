@@ -1,0 +1,21 @@
+.score {
+  display: inline-block;
+  min-width: 58px;
+  padding: 5px 9px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  .score {
+    background: none !important;
+  }
+}
+
+@media print {
+  .score {
+    background: none !important;
+  }
+}
