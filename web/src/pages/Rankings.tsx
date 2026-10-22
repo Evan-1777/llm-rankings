@@ -278,7 +278,7 @@ export function Rankings() {
               <span className={styles.footMark} aria-hidden="true" />
               覆盖率低于 80% 标记为暂定
             </p>
-            <p>权重合计 {data.totalWeight} / 加权平均</p>
+            <p>权重合计 {data.totalWeight} / {scorePercentageMode ? "分差百分比" : "加权平均"}</p>
           </div>
         </>
       );
@@ -313,7 +313,13 @@ export function Rankings() {
       <div className={styles.billHead}>
         <div className={styles.billIntro}>
           <p className={ui.sectionLabel}>当前榜单</p>
-          <span className={ui.sectionMeta}>{scorePercentageMode ? "分差百分比 / 1% = 最高分" : "加权平均 / 全部模型"}</span>
+          <span className={ui.sectionMeta}>
+            {scorePercentageMode
+              ? compositeRange
+                ? "分差百分比 / 1% = 最高分"
+                : "分差百分比 / 需至少两个不同分值"
+              : "加权平均 / 全部模型"}
+          </span>
           {dimensionScoreEmphasis ? (
             <span className={ui.legend}>
               <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />

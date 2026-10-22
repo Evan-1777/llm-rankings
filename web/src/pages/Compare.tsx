@@ -231,7 +231,7 @@ export function Compare() {
         <p className={styles.count}>
           {selected.length} / 4
           {selected.length >= 4 ? " · 已达上限" : ""}
-          {scorePercentageMode ? " · 分差" : ""}
+          {scorePercentageMode ? " · 分差 · 1% = 最高分" : ""}
         </p>
       </div>
 
