@@ -28,6 +28,8 @@ const tabLabels: Record<Tab, string> = {
   display: "显示",
 };
 
+const tabOrder: Tab[] = ["dimensions", "models", "data", "display"];
+
 function resolveTab(raw: string | null): Tab {
   return raw === "models" || raw === "data" || raw === "display" ? raw : "dimensions";
 }
@@ -62,6 +64,7 @@ export function Settings() {
   const dragRef = useRef<{ pointerId: number; id: number; from: number; over: number | null; y: number; raf: number | null } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const handlesRef = useRef(new Map<number, HTMLButtonElement>());
+  const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
   const pendingFocus = useRef<number | null>(null);
 
   const tab = resolveTab(params.get("tab"));
@@ -69,6 +72,7 @@ export function Settings() {
   const models = data?.models ?? [];
   const activeDimensions = dimensions.filter((dimension) => !dimension.archivedAt);
   const archivedDimensions = dimensions.filter((dimension) => dimension.archivedAt);
+  const scoreableDimensions = activeDimensions.filter((dimension) => dimension.weight > 0);
   const visibleDimensions = showArchived ? dimensions : activeDimensions;
   const totalScores = models.reduce((sum, model) => sum + model.scoreCount, 0);
   const totalWeight = activeDimensions.reduce((sum, dimension) => sum + dimension.weight, 0);
@@ -79,6 +83,19 @@ export function Settings() {
     if (next === "dimensions") nextParams.delete("tab");
     else nextParams.set("tab", next);
     setParams(nextParams);
+  };
+
+  const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, current: Tab) => {
+    const index = tabOrder.indexOf(current);
+    let next: Tab | undefined;
+    if (event.key === "ArrowRight") next = tabOrder[(index + 1) % tabOrder.length];
+    else if (event.key === "ArrowLeft") next = tabOrder[(index - 1 + tabOrder.length) % tabOrder.length];
+    else if (event.key === "Home") next = tabOrder[0];
+    else if (event.key === "End") next = tabOrder[tabOrder.length - 1];
+    if (!next) return;
+    event.preventDefault();
+    setTab(next);
+    tabRefs.current.get(next)?.focus();
   };
 
   const refreshAll = () => {
@@ -386,7 +403,8 @@ export function Settings() {
                     if (node) handlesRef.current.set(dimension.id, node);
                     else handlesRef.current.delete(dimension.id);
                   }}
-                  aria-label={`调整维度顺序：${dimension.name}`}
+                  aria-label={`调整维度顺序：${dimension.name}，使用上下方向键移动`}
+                  aria-keyshortcuts="ArrowUp ArrowDown"
                   disabled={orderBusy}
                   onPointerDown={(event) => beginDrag(event, dimension, index)}
                   onPointerMove={moveDrag}
@@ -460,7 +478,7 @@ export function Settings() {
               <span>#</span>
               <span>模型</span>
               <span>slug</span>
-              <span>评分</span>
+              <span>完整度</span>
               <span className={styles.actionsHead}>操作</span>
             </div>
             {models.map((model, index) => (
@@ -472,7 +490,7 @@ export function Settings() {
                 </div>
                 <span className={styles.slug}>{model.slug}</span>
                 <span className={styles.scoreCount}>
-                  {model.scoreCount} / {activeDimensions.length}
+                  {model.scoredDimensions} / {scoreableDimensions.length}
                 </span>
                 <div className={styles.rowActions}>
                   <IconButton label={`查看 ${model.name} 公开详情`} onClick={() => navigate(`/models/${model.slug}`)}>
@@ -519,7 +537,7 @@ export function Settings() {
         <div className={styles.panelHead}>
           <div className={styles.panelIntro}>
             <p className={ui.sectionLabel}>数据</p>
-            <span className={ui.sectionMeta}>完整 JSON 快照 / 仅管理员</span>
+            <span className={ui.sectionMeta}>完整 JSON 导出 / 仅管理员</span>
           </div>
         </div>
         <div className={styles.dataGrid}>
@@ -569,16 +587,22 @@ export function Settings() {
       </PageHeading>
 
       <nav className={styles.tabs} role="tablist" aria-label="设置分区">
-        {(Object.keys(tabLabels) as Tab[]).map((key) => (
+        {tabOrder.map((key) => (
           <button
             key={key}
             type="button"
             role="tab"
             id={`tab-${key}`}
+            ref={(node) => {
+              if (node) tabRefs.current.set(key, node);
+              else tabRefs.current.delete(key);
+            }}
             aria-selected={tab === key}
             aria-controls={`panel-${key}`}
+            tabIndex={tab === key ? 0 : -1}
             className={`${styles.tab} ${tab === key ? styles.activeTab : ""}`}
             onClick={() => setTab(key)}
+            onKeyDown={(event) => moveTab(event, key)}
           >
             {tabLabels[key]}
           </button>

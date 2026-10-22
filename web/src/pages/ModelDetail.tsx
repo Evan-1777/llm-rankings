@@ -8,7 +8,7 @@ import { PageHeading } from "../components/PageHeading";
 import { ScoreDialog } from "../components/ScoreDialog";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
-import { barWidth, dimensionMax, formatPercent, formatScore } from "../domain/ranking";
+import { barWidth, dimensionMax, dimensionRanks, formatPercent, formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { dimensionScoreRanges } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
@@ -28,6 +28,10 @@ export function ModelDetail() {
   useDocumentTitle(data?.detail.name ?? "模型详情");
   const scoreRanges = useMemo(
     () => dimensionScoreRanges(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
+    [data?.rankings.models, data?.detail.dimensions],
+  );
+  const ranksByDimension = useMemo(
+    () => dimensionRanks(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
     [data?.rankings.models, data?.detail.dimensions],
   );
 
@@ -131,7 +135,7 @@ export function ModelDetail() {
 
       <div className={ui.sectionHead}>
         <p className={ui.sectionLabel}>维度得分</p>
-        <span className={`${ui.sectionMeta} ${styles.hideMobile}`}>相对条按最高分归一 / 下限 10</span>
+        <span className={`${ui.sectionMeta} ${styles.hideMobile}`}>相对条按最高分归一 / 名次按同维度已评分模型</span>
       </div>
 
       {dimensionCount === 0 ? (
@@ -148,13 +152,16 @@ export function ModelDetail() {
       ) : (
         <div className={styles.tableWrap}>
           <table className={styles.dimTable}>
-            <caption className="sr-only">{detail.name} 的维度得分</caption>
+            <caption className="sr-only">{detail.name} 的维度得分与同维度排名</caption>
             <thead>
               <tr>
                 <th scope="col">维度</th>
                 <th scope="col">权重</th>
                 <th scope="col" className={styles.num}>
                   得分
+                </th>
+                <th scope="col" className={`${styles.rankCol} ${styles.num}`}>
+                  维度排名
                 </th>
                 <th scope="col" className={styles.barCol}>
                   相对
@@ -164,12 +171,24 @@ export function ModelDetail() {
             <tbody>
               {detail.dimensions.map((dimension) => {
                 const max = dimensionMax(rankings.models, dimension.id);
+                const ranked = ranksByDimension.get(dimension.id);
+                const rank = ranked?.get(detail.slug) ?? null;
                 return (
                   <tr key={dimension.id}>
                     <td className={styles.dimName}>{dimension.name}</td>
                     <td className={styles.weight}>{dimension.weight}</td>
                     <td className={`${styles.score} ${styles.num}`}>
                       <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} />
+                    </td>
+                    <td className={`${styles.rankCell} ${styles.num}`}>
+                      {rank == null ? (
+                        <span className={styles.rankMissing}>—</span>
+                      ) : (
+                        <span className={styles.rank}>
+                          <b>{rankLabel(rank)}</b>
+                          <span className={styles.rankTotal}>/ {rankLabel(ranked?.size ?? 0)}</span>
+                        </span>
+                      )}
                     </td>
                     <td className={styles.barCol}>
                       <span className={styles.barTrack} aria-hidden="true">

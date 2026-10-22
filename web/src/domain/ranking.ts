@@ -103,7 +103,13 @@ function rowValue(row: RankRow, key: string): number | null {
 }
 
 function compareNames(a: RankRow, b: RankRow): number {
-  return a.name.localeCompare(b.name, "zh-CN") || a.slug.localeCompare(b.slug);
+  // Match the Go ordering (lowercased UTF-8 byte order, then slug) instead of
+  // Chinese locale collation, or the preview rank can differ from the saved one.
+  const an = a.name.toLowerCase();
+  const bn = b.name.toLowerCase();
+  if (an !== bn) return an < bn ? -1 : 1;
+  if (a.slug === b.slug) return 0;
+  return a.slug < b.slug ? -1 : 1;
 }
 
 /**
@@ -200,9 +206,9 @@ export function previewRanking(
   };
 }
 
-/** Highest score for a dimension across all models, with a floor of 10. */
+/** Highest score for a dimension across all models. */
 export function dimensionMax(rows: RankRow[], dimensionId: number): number {
-  let max = 10;
+  let max = 0;
   for (const row of rows) {
     const value = row.scores[String(dimensionId)];
     if (value != null && Number.isFinite(value) && value > max) max = value;
@@ -213,4 +219,21 @@ export function dimensionMax(rows: RankRow[], dimensionId: number): number {
 export function barWidth(value: number | null | undefined, max: number): number {
   if (value == null || !Number.isFinite(value) || max <= 0) return 0;
   return Math.max(0, Math.min(100, (value / max) * 100));
+}
+
+/**
+ * Ordinal rank of every scored model within each dimension, using the same
+ * value/name/slug order as the official ranking. Unscored models are omitted.
+ */
+export function dimensionRanks(rows: RankRow[], dimensionIds: Iterable<number>): Map<number, Map<string, number>> {
+  const ranks = new Map<number, Map<string, number>>();
+  for (const id of dimensionIds) {
+    const key = String(id);
+    const scored = rows.filter((row) => row.scores[key] != null);
+    scored.sort((a, b) => b.scores[key] - a.scores[key] || compareNames(a, b));
+    const bySlug = new Map<string, number>();
+    scored.forEach((row, index) => bySlug.set(row.slug, index + 1));
+    ranks.set(id, bySlug);
+  }
+  return ranks;
 }

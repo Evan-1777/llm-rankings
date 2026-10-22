@@ -21,12 +21,13 @@ type modelResponse struct {
 }
 
 type modelListItem struct {
-	Slug       string  `json:"slug"`
-	Name       string  `json:"name"`
-	Vendor     string  `json:"vendor"`
-	Notes      *string `json:"notes,omitempty"`
-	ScoreCount int     `json:"scoreCount"`
-	UpdatedAt  string  `json:"updatedAt"`
+	Slug             string  `json:"slug"`
+	Name             string  `json:"name"`
+	Vendor           string  `json:"vendor"`
+	Notes            *string `json:"notes,omitempty"`
+	ScoreCount       int     `json:"scoreCount"`
+	ScoredDimensions int     `json:"scoredDimensions"`
+	UpdatedAt        string  `json:"updatedAt"`
 }
 
 type modelDetailResponse struct {
@@ -73,11 +74,12 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	out := make([]modelListItem, 0, len(models))
 	for _, m := range models {
 		item := modelListItem{
-			Slug:       m.Slug,
-			Name:       m.Name,
-			Vendor:     m.Vendor,
-			ScoreCount: m.ScoreCount,
-			UpdatedAt:  m.UpdatedAt.UTC().Format(time.RFC3339),
+			Slug:             m.Slug,
+			Name:             m.Name,
+			Vendor:           m.Vendor,
+			ScoreCount:       m.ScoreCount,
+			ScoredDimensions: m.ScoredDimensions,
+			UpdatedAt:        m.UpdatedAt.UTC().Format(time.RFC3339),
 		}
 		if admin {
 			notes := m.Notes

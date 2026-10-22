@@ -2,7 +2,6 @@ export interface Counts {
   models: number;
   scoredModels: number;
   dimensions: number;
-  scores: number;
 }
 
 export interface Dimension {
@@ -52,7 +51,10 @@ export interface ModelSummary {
   name: string;
   vendor: string;
   notes?: string;
+  /** Every stored score, including archived and zero-weight dimensions. */
   scoreCount: number;
+  /** Scores on enabled dimensions with a positive weight. */
+  scoredDimensions: number;
   updatedAt: string;
 }
 
@@ -112,25 +114,4 @@ export interface ErrorEnvelope {
     message: string;
     fields?: Record<string, string>;
   };
-}
-
-export interface ExportSnapshot {
-  version: number;
-  exportedAt: string;
-  dimensions: Dimension[];
-  models: Array<{
-    slug: string;
-    name: string;
-    vendor: string;
-    notes: string;
-    createdAt: string;
-    updatedAt: string;
-  }>;
-  scores: Array<{
-    modelSlug: string;
-    dimensionId: number;
-    value: number;
-    note: string;
-    updatedAt: string;
-  }>;
 }

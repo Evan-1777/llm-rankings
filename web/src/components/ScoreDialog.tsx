@@ -194,6 +194,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     if (!model || !detail || saving || !dirty || Object.keys(errors).length > 0) return;
     setSaving(true);
     setSaveError("");
+    let applied = 0;
     try {
       for (const dimension of dimensions) {
         const row = draft[dimension.id];
@@ -201,16 +202,21 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
         if (!row || !base) continue;
         const parsed = parseValue(row.value);
         if (parsed.value == null) {
-          if (base.value != null) await api.deleteScore(model.slug, dimension.id);
+          if (base.value != null) {
+            await api.deleteScore(model.slug, dimension.id);
+            applied += 1;
+          }
         } else if (base.value == null || parsed.value !== base.value || row.note !== base.note) {
           await api.putScore(model.slug, dimension.id, parsed.value, row.note);
+          applied += 1;
         }
       }
       toast("评分已保存");
       onSaved();
       onClose();
     } catch (error) {
-      setSaveError(errorMessage(error));
+      const message = errorMessage(error);
+      setSaveError(applied > 0 ? `${message}；已提交 ${applied} 项，可再次保存补齐` : message);
     } finally {
       setSaving(false);
     }
@@ -265,6 +271,9 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
               const row = draft[dimension.id];
               if (!row) return null;
               const error = errors[dimension.id];
+              // A note belongs to a score row, so it is only editable once the
+              // dimension has a value; otherwise a PUT would have nothing to send.
+              const hasScore = row.value.trim() !== "";
               return (
                 <li className={styles.row} key={dimension.id}>
                   <div className={styles.rowMain}>
@@ -292,14 +301,21 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
                       }}
                     />
                     <IconButton
-                      label={row.openNote ? `收起 ${dimension.name} 评分备注` : `展开 ${dimension.name} 评分备注`}
-                      active={row.openNote}
+                      label={
+                        hasScore
+                          ? row.openNote
+                            ? `收起 ${dimension.name} 评分备注`
+                            : `展开 ${dimension.name} 评分备注`
+                          : `${dimension.name} 备注需先填写评分`
+                      }
+                      active={hasScore && row.openNote}
+                      disabled={!hasScore}
                       onClick={() => updateRow(dimension.id, { openNote: !row.openNote })}
                     >
                       <Icon name="note" />
                     </IconButton>
                   </div>
-                  {row.openNote ? (
+                  {row.openNote && hasScore ? (
                     <textarea
                       className={styles.noteInput}
                       value={row.note}
@@ -322,7 +338,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
       </div>
       <div className={ui.dialogFoot}>
         <div className={styles.footNote}>
-          <span>非负、不设上限，保留一位小数</span>
+          <span className={styles.footHint}>非负、不设上限，保留一位小数</span>
           {saveError ? (
             <span className={styles.saveError} role="alert">
               {saveError}

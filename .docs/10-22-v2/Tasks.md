@@ -3,20 +3,20 @@
 状态：DONE
 日期：2026-10-22
 关联 Plan：[Plan.md](<Plan.md>) v1.3
-工作流：Main-hybrid(Frontend)（等待交付段）
-前端参考：[维度排序 Demo](<temp/dimension-order.html>)；已加载 frontend-design、production-frontend，沿用 Apple HIG 交互与可访问性基准 + 瑞士平面视觉。Demo 使用独立演示数据与本地存储，不是已接入后端的产品实现。
+工作流：Main-hybrid(Frontend)
+前端参考：[维度排序 Demo（仅本机存在）](<../../temp/dimension-order.html>)；已加载 frontend-design、production-frontend，沿用 Apple HIG 交互与可访问性基准 + 瑞士平面视觉。Demo 使用独立演示数据与本地存储，不是已接入后端的产品实现。
 总计 Task：6 个，全部 DONE；完成日期 2026-10-22。
 
 ## Explore 结论与已查阅文件
-- 范围与风格：[SCOPE](<.docs/SCOPE.md>)、[Project](<.docs/Project.md>)；沿用瑞士平面风格，不新增依赖。
-- 数据源：[维度存储](<internal/store/dimensions.go>) 当前按 ID 排序；[迁移入口](<internal/store/db.go>) 按文件名执行追加迁移；[初始表](<migrations/001_init.sql>) 无位置字段。
-- HTTP：[路由](<internal/api/server.go>)、[维度处理器](<internal/api/handlers_dimensions.go>)、[排名快照](<internal/api/rankings.go>)；bootstrap、排行及导出共用维度列表入口。
-- 前端：[设置页](<web/src/pages/Settings.tsx>)、[样式](<web/src/pages/Settings.module.css>)、[API 客户端](<web/src/api/client.ts>)、[异步数据 hook](<web/src/hooks/useAsyncData.ts>)、[图标](<web/src/components/Icons.tsx>)、[按钮](<web/src/components/Button.tsx>)。
-- 评分：[Go 算法](<internal/domain/ranking.go>)、[前端算法](<web/src/domain/ranking.ts>) 当前按传入维度顺序累加，需要隔离展示顺序。
-- 测试：[存储测试](<internal/store/store_test.go>)、[HTTP 测试](<internal/api/api_test.go>)、[前端评分测试](<web/src/domain/ranking.test.ts>)；[前端脚本](<web/package.json>) 使用 Node 原生测试。
+- 范围与风格：[SCOPE](<../SCOPE.md>)、[Project](<../Project.md>)；沿用瑞士平面风格，不新增依赖。
+- 数据源：[维度存储](<../../internal/store/dimensions.go>) 当前按 ID 排序；[迁移入口](<../../internal/store/db.go>) 按文件名执行追加迁移；[初始表](<../../migrations/001_init.sql>) 无位置字段。
+- HTTP：[路由](<../../internal/api/server.go>)、[维度处理器](<../../internal/api/handlers_dimensions.go>)、[排名快照](<../../internal/api/rankings.go>)；bootstrap、排行及导出共用维度列表入口。
+- 前端：[设置页](<../../web/src/pages/Settings.tsx>)、[样式](<../../web/src/pages/Settings.module.css>)、[API 客户端](<../../web/src/api/client.ts>)、[异步数据 hook](<../../web/src/hooks/useAsyncData.ts>)、[图标](<../../web/src/components/Icons.tsx>)、[按钮](<../../web/src/components/Button.tsx>)。
+- 评分：[Go 算法](<../../internal/domain/ranking.go>)、[前端算法](<../../web/src/domain/ranking.ts>) 当前按传入维度顺序累加，需要隔离展示顺序。
+- 测试：[存储测试](<../../internal/store/store_test.go>)、[HTTP 测试](<../../internal/api/api_test.go>)、[前端评分测试](<../../web/src/domain/ranking.test.ts>)；[前端脚本](<../../web/package.json>) 使用 Node 原生测试。
 
 ## TASK-001：持久化维度展示顺序
-- Status：TODO
+- Status：DONE
 - Executor：主线
 - Priority：P0；依赖：无；Phase：1
 - Description：追加 `migrations/002_dimension_order.sql`，修改维度存储查询与新建行为。
@@ -24,7 +24,7 @@
 - Acceptance Criteria：存储测试覆盖旧结构升级、原顺序保留、重启保留、新建置尾（含删除后）、归档及恢复位置；现有测试通过。
 
 ## TASK-002：固定评分计算顺序
-- Status：TODO
+- Status：DONE
 - Executor：主线
 - Priority：P0；依赖：TASK-001；Phase：1
 - Description：修改 Go Compute 与前端 composite，使累加按维度 ID 升序进行。
@@ -34,7 +34,7 @@
 - Acceptance Criteria：Go/前端各留一个可运行回归；两种展示排列的原始和必须不等，修复后的综合分、覆盖率及排名严格一致，输入数组内容及顺序不变；移除生产中的 ID 排序后该回归应失败。
 
 ## TASK-003：添加管理员原子重排接口
-- Status：TODO
+- Status：DONE
 - Executor：主线
 - Priority：P0；依赖：TASK-002；Phase：1
 - Description：在维度存储实现 ReorderDimensions，并添加 `PUT /api/dimensions/order`。
@@ -43,7 +43,7 @@
 - Acceptance Criteria：测试合法重排；缺失/null、重复、非正 ID 的 422 与 fields.ids；类型错误 400；数量/成员不一致（含未知正整数、新增/删除后的旧载荷）409；各失败路径位置及 updated_at 不变；空库、未认证 401、跨源拒绝。检查 bootstrap、dimensions、rankings、模型详情、export 的维度顺序及既有字段不变。
 
 ## TASK-004：添加原生拖动手柄和键盘排序
-- Status：TODO
+- Status：DONE
 - Executor：主线
 - Priority：P0；依赖：TASK-003；Phase：2
 - Description：修改设置页、对应 CSS、API 客户端和图标；必要时新增最小的可见 ID 排列纯函数及测试，不新增依赖。
@@ -69,9 +69,9 @@
 - Executor：主线
 - Priority：P1；依赖：TASK-005；Phase：3
 - Description：同步项目文档中的迁移、接口、全局排序行为与测试结果，归档后创建中文 Conventional Commit。
-- Details：交付完成后删除或替换 [Project 当前规划注记](<.docs/Project.md#L99>) 中“规划交接阶段、尚未接入产品代码”的段落；在数据模型表补 position，在 API 表补 `PUT /api/dimensions/order` 及 400/422/409 语义，记录手柄局部尺寸、稳定计分和真实触摸验收状态；保留 Apple HIG + 瑞士平面基准，不将 Demo 本地保存方式写成产品行为。
+- Details：交付完成后删除或替换 [Project 当前规划注记](<../Project.md>) 中“规划交接阶段、尚未接入产品代码”的段落；在数据模型表补 position，在 API 表补 `PUT /api/dimensions/order` 及 400/422/409 语义，记录手柄局部尺寸、稳定计分和真实触摸验收状态；保留 Apple HIG + 瑞士平面基准，不将 Demo 本地保存方式写成产品行为。
 - Details：任务完成即标记 DONE；全部完成后计划和任务标注 DONE、完成日期与回归结论，按当天递增目录归档；检查 git status/diff/log，仅提交本次相关文件，不提交密钥、数据库或构建产物。
-- Acceptance Criteria：项目文档与代码一致，归档含 Plan/Tasks 且根目录无已完成文件；提交成功。当前规划交接阶段不得提前执行本任务。
+- Acceptance Criteria：项目文档与代码一致，归档含 Plan/Tasks 且根目录无已完成文件；提交成功。
 ## 回归与验收结论
 - 2026-10-22：`go test ./...`、`go vet ./...` 通过；覆盖旧库迁移保序、新建置尾、归档/恢复保留位置、原子重排失败回滚、稳定计分与接口状态码。
 - 2026-10-22：`pnpm --dir web test` 14/14 通过；`pnpm --dir web typecheck`、`pnpm --dir web build` 通过。

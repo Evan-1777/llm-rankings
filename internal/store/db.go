@@ -144,7 +144,6 @@ type Counts struct {
 	Models       int
 	Dimensions   int
 	ScoredModels int
-	Scores       int
 }
 
 // MaxUpdatedAt returns the newest model or score timestamp, or nil when empty.
@@ -181,9 +180,6 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT s.model_id)
 		FROM scores s JOIN dimensions d ON d.id = s.dimension_id
 		WHERE d.archived_at IS NULL AND d.weight > 0`).Scan(&c.ScoredModels); err != nil {
-		return c, err
-	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scores`).Scan(&c.Scores); err != nil {
 		return c, err
 	}
 	return c, nil

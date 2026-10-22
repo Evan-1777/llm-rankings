@@ -1,23 +1,8 @@
-const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
 const clockFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
 });
-
-export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return dateTimeFormatter.format(date).replaceAll("/", "-");
-}
 
 export function formatClock(iso: string | null | undefined): string {
   if (!iso) return "—";

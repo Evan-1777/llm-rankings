@@ -433,7 +433,7 @@
   }
 
   .scoreCount::before {
-    content: "评分 ";
+    content: "完整度 ";
     font-family: var(--font-sans);
     font-size: 10px;
     color: var(--ink-3);

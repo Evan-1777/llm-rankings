@@ -11,18 +11,18 @@
 
 ## 交接输入与 Explore 证据
 
-先读 [SCOPE.md](.docs/SCOPE.md)、[Project.md](.docs/Project.md) 与关联计划，再按 Task 重读源文件。沿用工程纪律、frontend-design、production-frontend；设计基准为既有 Apple HIG 交互与瑞士平面视觉，不加载 Fluent / Material 3、不升级依赖。
+先读 [SCOPE.md](../SCOPE.md)、[Project.md](../Project.md) 与关联计划，再按 Task 重读源文件。沿用工程纪律、frontend-design、production-frontend；设计基准为既有 Apple HIG 交互与瑞士平面视觉，不加载 Fluent / Material 3、不升级依赖。
 
 已查阅关键文件：
 
 | 链路 | 已读文件与结论 |
 |---|---|
-| 模型表单 | [ModelDialog.tsx](web/src/components/ModelDialog.tsx)、[Field.tsx](web/src/components/Field.tsx)、[Dialog.tsx](web/src/components/Dialog.tsx)、[模型表单样式](web/src/components/ModelDialog.module.css)：共享弹窗负责全部模型创建与档案编辑，厂商为可空文本 |
-| 模型入口 | [Rankings.tsx](web/src/pages/Rankings.tsx)、[Workbench.tsx](web/src/pages/Workbench.tsx)、[Settings.tsx](web/src/pages/Settings.tsx)：三处已有完整模型列表；统一保存回调重载 |
-| 只读得分 | [Compare.tsx](web/src/pages/Compare.tsx)、[ModelDetail.tsx](web/src/pages/ModelDetail.tsx) 与排行页面：各有全榜数据；对比旧规则为所选模型最高分红字 |
-| 样式 | [global.css](web/src/styles/global.css)、[ui.module.css](web/src/components/ui.module.css)、[Rankings.module.css](web/src/pages/Rankings.module.css)、[Compare.module.css](web/src/pages/Compare.module.css)、[ModelDetail.module.css](web/src/pages/ModelDetail.module.css)、[Settings.module.css](web/src/pages/Settings.module.css)：现成令牌、原生 select、checkbox、直角模态可复用 |
-| 权限与入口 | [App.tsx](web/src/App.tsx)、[Header.tsx](web/src/components/Header.tsx)、[main.tsx](web/src/main.tsx)：设置整体受 RequireAdmin 保护；Header 设置链接仅管理员可见 |
-| 评分与类型 | [ranking.ts](web/src/domain/ranking.ts)、[types.ts](web/src/api/types.ts)、[package.json](web/package.json)：分数无上限；详情条 dimensionMax 下限为 10，不能复用为色阶范围；现有 Node 原生测试可扩展 |
+| 模型表单 | [ModelDialog.tsx](../../web/src/components/ModelDialog.tsx)、[Field.tsx](../../web/src/components/Field.tsx)、[Dialog.tsx](../../web/src/components/Dialog.tsx)、[模型表单样式](../../web/src/components/ModelDialog.module.css)：共享弹窗负责全部模型创建与档案编辑，厂商为可空文本 |
+| 模型入口 | [Rankings.tsx](../../web/src/pages/Rankings.tsx)、[Workbench.tsx](../../web/src/pages/Workbench.tsx)、[Settings.tsx](../../web/src/pages/Settings.tsx)：三处已有完整模型列表；统一保存回调重载 |
+| 只读得分 | [Compare.tsx](../../web/src/pages/Compare.tsx)、[ModelDetail.tsx](../../web/src/pages/ModelDetail.tsx) 与排行页面：各有全榜数据；对比旧规则为所选模型最高分红字 |
+| 样式 | [global.css](../../web/src/styles/global.css)、[ui.module.css](../../web/src/components/ui.module.css)、[Rankings.module.css](../../web/src/pages/Rankings.module.css)、[Compare.module.css](../../web/src/pages/Compare.module.css)、[ModelDetail.module.css](../../web/src/pages/ModelDetail.module.css)、[Settings.module.css](../../web/src/pages/Settings.module.css)：现成令牌、原生 select、checkbox、直角模态可复用 |
+| 权限与入口 | [App.tsx](../../web/src/App.tsx)、[Header.tsx](../../web/src/components/Header.tsx)、[main.tsx](../../web/src/main.tsx)：设置整体受 RequireAdmin 保护；Header 设置链接仅管理员可见 |
+| 评分与类型 | [ranking.ts](../../web/src/domain/ranking.ts)、[types.ts](../../web/src/api/types.ts)、[package.json](../../web/package.json)：分数无上限；详情条 dimensionMax 下限为 10，不能复用为色阶范围（该下限已于后续轮次移除，色阶仍不复用相对条）；现有 Node 原生测试可扩展 |
 
 只读 explore 子任务另已核对 API、模型存储与排行计算：rankings 的 models 不因无维度、零权重或未评分而剔除；无需后端变更。主线接手须对照真实调用重读，不依赖子任务结论直接修改。
 
@@ -47,8 +47,8 @@
 - **Priority**：P0
 - **Depends on**：TASK-001（共享页面同一写入者串行）
 - **Description**：新增单一显示偏好上下文，提供 dimensionScoreEmphasis 布尔值及更新动作。
-- **Details**：新增纯 TS 存储模块 `web/src/preferences/preferenceStorage.ts`，接口接收 `Storage`（或读写函数）；再新增 `web/src/preferences/DisplayPreferences.tsx`，只负责 React 上下文、状态与 Toast 接线。Node 原生测试只导入纯 `.ts`，不导入 `.tsx`：Node 24 的类型擦除不处理 JSX，现有测试也均为纯 `.ts`。在 [App.tsx](web/src/App.tsx) 内 ToastProvider 以下、RouterProvider 以上挂载，以复用反馈。localStorage key 固定为 `llmrank:dimension-score-emphasis`，仅字符串 `true`/`false` 有效；默认 true。初始化读取失败/未设置/无效值采用 true；写失败仍更新内存状态，并 Toast“显示设置仅在本次会话生效”。不跟随登录重置、不写 API、不随 JSON 导出、不要求跨标签同步。
-- **Acceptance Criteria**：默认开、关后切页/刷新仍关、重新开后刷新仍开；无效存储采用默认；模拟读取/写入异常页面仍可用，写入失败有反馈；登出不改偏好；所有使用者消费同一源。新增 `preferenceStorage.test.ts`，注入假存储覆盖 true/false、无效值、读取异常、写入异常，并把文件加入 [package.json](web/package.json) 的现有 test 命令；typecheck 通过。
+- **Details**：新增纯 TS 存储模块 `web/src/preferences/preferenceStorage.ts`，接口接收 `Storage`（或读写函数）；再新增 `web/src/preferences/DisplayPreferences.tsx`，只负责 React 上下文、状态与 Toast 接线。Node 原生测试只导入纯 `.ts`，不导入 `.tsx`：Node 24 的类型擦除不处理 JSX，现有测试也均为纯 `.ts`。在 [App.tsx](../../web/src/App.tsx) 内 ToastProvider 以下、RouterProvider 以上挂载，以复用反馈。localStorage key 固定为 `llmrank:dimension-score-emphasis`，仅字符串 `true`/`false` 有效；默认 true。初始化读取失败/未设置/无效值采用 true；写失败仍更新内存状态，并 Toast“显示设置仅在本次会话生效”。不跟随登录重置、不写 API、不随 JSON 导出、不要求跨标签同步。
+- **Acceptance Criteria**：默认开、关后切页/刷新仍关、重新开后刷新仍开；无效存储采用默认；模拟读取/写入异常页面仍可用，写入失败有反馈；登出不改偏好；所有使用者消费同一源。新增 `preferenceStorage.test.ts`，注入假存储覆盖 true/false、无效值、读取异常、写入异常，并把文件加入 [package.json](../../web/package.json) 的现有 test 命令；typecheck 通过。
 
 ### TASK-003：在管理员设置中添加显示分区
 
@@ -57,7 +57,7 @@
 - **Priority**：P0
 - **Depends on**：TASK-002
 - **Description**：在现有管理员设置页新增 display 分区，接通唯一复选开关，复用现有 tabs 与样式。
-- **Details**：[Settings.tsx](web/src/pages/Settings.tsx) 的 `Tab` 与 `tabLabels` 增加 `display`，`resolveTab` 识别 `display`；在现有设置页内新增显示面板，复用现有 tabs、PageHeading、原生 checkbox 与纸白线框样式，仅显示“维度得分强调”、开启/关闭状态及“当前浏览器”作用域；不包含管理统计、删除提示或导出信息。不新增公开路由、不抽共享 `SettingsTabs`、不修改 [Header.tsx](web/src/components/Header.tsx)；`/settings` 整体仍由 [App.tsx](web/src/App.tsx) 的 RequireAdmin 保护，匿名访问 `?tab=display` 仍回登录。显示偏好来自 TASK-002，管理数据读取与拖动排序保持原状，不要把管理页数据读取上移。
+- **Details**：[Settings.tsx](../../web/src/pages/Settings.tsx) 的 `Tab` 与 `tabLabels` 增加 `display`，`resolveTab` 识别 `display`；在现有设置页内新增显示面板，复用现有 tabs、PageHeading、原生 checkbox 与纸白线框样式，仅显示“维度得分强调”、开启/关闭状态及“当前浏览器”作用域；不包含管理统计、删除提示或导出信息。不新增公开路由、不抽共享 `SettingsTabs`、不修改 [Header.tsx](../../web/src/components/Header.tsx)；`/settings` 整体仍由 [App.tsx](../../web/src/App.tsx) 的 RequireAdmin 保护，匿名访问 `?tab=display` 仍回登录。显示偏好来自 TASK-002，管理数据读取与拖动排序保持原状，不要把管理页数据读取上移。
 - **Acceptance Criteria**：匿名访问 `/settings?tab=display` 仍按既有行为去登录；管理员可在显示分区切换开关，登录后原管理操作与拖动排序不回归；显示分区复用现有设置页加载/错误状态，不额外请求数据；Space 可切换、焦点可见、390px/760px 导航不溢出。
 
 ### TASK-004：建立无上限评分的维度色阶纯函数
@@ -68,7 +68,7 @@
 - **Depends on**：TASK-002
 - **Description**：添加展示专用的全榜维度范围计算与透明度映射，不修改评分计算函数。
 - **Details**：建议新增 `web/src/lib/scoreEmphasis.ts` 及同名 Node 测试。输入采用只需要 scores 的窄类型和维度 ID；每个维度从全榜有效有限非负值计算 min/max。映射 0.06 + 0.12 × (value − min)/(max − min)，值处于端点时精确对应 0.06/0.18，范围内单调。空、单值、全相等、缺失值不强调；0 是有效值。不要复用 dimensionMax 的 floor=10，不改综合分/排名，不为色阶排序或写回原数组。
-- **Acceptance Criteria**：测试覆盖低/中/高、并列、0 与 null 区别、12.5 与更大值、Number.MAX_VALUE、空/单值/全相等、维度重排、原数组不变；返回有限且不超 0.06–0.18；同值同色；非参与维度不被使用。把新测试加入 [package.json](web/package.json) 的现有 test 命令，typecheck 通过。
+- **Acceptance Criteria**：测试覆盖低/中/高、并列、0 与 null 区别、12.5 与更大值、Number.MAX_VALUE、空/单值/全相等、维度重排、原数组不变；返回有限且不超 0.06–0.18；同值同色；非参与维度不被使用。把新测试加入 [package.json](../../web/package.json) 的现有 test 命令，typecheck 通过。
 
 ### TASK-005：将统一得分强调接入排行、详情与对比
 
@@ -124,7 +124,7 @@
 - **Priority**：P1
 - **Depends on**：TASK-006
 - **Description**：更新项目说明中的前端路由、个人偏好、厂商派生和得分显示规则，归档本阶段计划与任务。
-- **Details**：更新 [Project.md](.docs/Project.md) 当前增量、结构（新增 preferences 目录时同步）、路由（`/settings?tab=dimensions|models|data|display` 仍全部位于 RequireAdmin 下）、信息架构、显示偏好作用域及默认值（仅管理员可改，访客默认开启）、全榜相对色阶 6%–18%/等分不着色、不制作图例、关闭即无强调（含对比旧红字被替代）、验证结论；确认登录页“评分与设置仅对管理员开放”仍准确，若实现偏离则同步修正。不得把仍未验证项写成通过。清理本次无用临时文件与一次性产物；Demo 仅本机临时参照，temp 仍沿用 Git ignore，不强行提交。记录所有实际测试。完成后按现有归档格式查询当天最大版本，不能假定 v3 空闲。执行归档前核对源/目标绝对路径并确认目标不存在。计划/任务填写状态 DONE、完成日期与回归结论，移入 .docs/MM-DD-vN，确认二者均存在且根目录无已完成文件残留。
+- **Details**：更新 [Project.md](../Project.md) 当前增量、结构（新增 preferences 目录时同步）、路由（`/settings?tab=dimensions|models|data|display` 仍全部位于 RequireAdmin 下）、信息架构、显示偏好作用域及默认值（仅管理员可改，访客默认开启）、全榜相对色阶 6%–18%/等分不着色、不制作图例、关闭即无强调（含对比旧红字被替代）、验证结论；确认登录页“评分与设置仅对管理员开放”仍准确，若实现偏离则同步修正。不得把仍未验证项写成通过。清理本次无用临时文件与一次性产物；Demo 仅本机临时参照，temp 仍沿用 Git ignore，不强行提交。记录所有实际测试。完成后按现有归档格式查询当天最大版本，不能假定 v3 空闲。执行归档前核对源/目标绝对路径并确认目标不存在。计划/任务填写状态 DONE、完成日期与回归结论，移入 .docs/MM-DD-vN，确认二者均存在且根目录无已完成文件残留。
 - **Acceptance Criteria**：项目资料与已实现事实一致；无新增依赖/API/数据库变动时明确无需同步这些契约；完成文档已成对归档、测试记录可追溯；下一项仅为 Git 提交收尾。
 
 ### TASK-008：检查差分并提交相关变更

@@ -121,6 +121,22 @@ func TestComputeTieBreakCoverageThenName(t *testing.T) {
 	}
 }
 
+func TestComputeTieBreakUnicodeNames(t *testing.T) {
+	// Lowercased UTF-8 byte order puts 张 before 李; the frontend compareNames
+	// mirrors this so the score preview cannot disagree with the saved rank.
+	result := Compute(Input{
+		Dimensions: dims(100),
+		Models:     []Model{{ID: 1, Slug: "li", Name: "李"}, {ID: 2, Slug: "zhang", Name: "张"}},
+		Scores:     []Score{{ModelID: 1, DimensionID: 1, Value: 9}, {ModelID: 2, DimensionID: 1, Value: 9}},
+	})
+	if result.Rows[0].Slug != "zhang" || result.Rows[1].Slug != "li" {
+		t.Fatalf("unicode tie order = %s, %s", result.Rows[0].Slug, result.Rows[1].Slug)
+	}
+	if result.Rows[0].Rank != 1 || result.Rows[1].Rank != 2 {
+		t.Fatalf("ranks = %d, %d", result.Rows[0].Rank, result.Rows[1].Rank)
+	}
+}
+
 func TestComputeNormalizesBeforeMultiplying(t *testing.T) {
 	result := Compute(Input{
 		Dimensions: dims(50, 50),

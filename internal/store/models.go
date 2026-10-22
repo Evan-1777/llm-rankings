@@ -18,16 +18,23 @@ type Model struct {
 	UpdatedAt time.Time
 }
 
-// ModelSummary adds score count for management lists.
+// ModelSummary adds stored score totals and scoreable-dimension completeness
+// for management lists. ScoreCount includes archived dimensions; ScoredDimensions
+// only counts enabled dimensions with a positive weight.
 type ModelSummary struct {
 	Model
-	ScoreCount int
+	ScoreCount       int
+	ScoredDimensions int
 }
 
 // ListModels returns models ordered by name.
 func (s *Store) ListModels(ctx context.Context) ([]ModelSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.id, m.slug, m.name, m.vendor, m.notes, m.created_at, m.updated_at, COUNT(sc.model_id)
-		FROM models m LEFT JOIN scores sc ON sc.model_id = m.id
+	rows, err := s.db.QueryContext(ctx, `SELECT m.id, m.slug, m.name, m.vendor, m.notes, m.created_at, m.updated_at,
+		COUNT(sc.model_id),
+		COUNT(CASE WHEN d.archived_at IS NULL AND d.weight > 0 THEN 1 END)
+		FROM models m
+		LEFT JOIN scores sc ON sc.model_id = m.id
+		LEFT JOIN dimensions d ON d.id = sc.dimension_id
 		GROUP BY m.id ORDER BY m.name COLLATE NOCASE, m.slug`)
 	if err != nil {
 		return nil, err
@@ -38,7 +45,7 @@ func (s *Store) ListModels(ctx context.Context) ([]ModelSummary, error) {
 	for rows.Next() {
 		var m ModelSummary
 		var created, updated string
-		if err := rows.Scan(&m.ID, &m.Slug, &m.Name, &m.Vendor, &m.Notes, &created, &updated, &m.ScoreCount); err != nil {
+		if err := rows.Scan(&m.ID, &m.Slug, &m.Name, &m.Vendor, &m.Notes, &created, &updated, &m.ScoreCount, &m.ScoredDimensions); err != nil {
 			return nil, err
 		}
 		if m.CreatedAt, err = parseStamp(created); err != nil {

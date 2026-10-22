@@ -4,6 +4,7 @@ import {
   barWidth,
   composite,
   dimensionMax,
+  dimensionRanks,
   formatDimension,
   formatPercent,
   formatScore,
@@ -84,6 +85,14 @@ test("model sorting reverses and is stable by official rank", () => {
   assert.deepEqual(sortRows(rows, "model", "desc").map((r) => r.slug), ["b", "a"]);
 });
 
+test("tie-break matches the Go byte order for Chinese names", () => {
+  const named = (slug: string, name: string): RankRow => ({ ...row(slug, 9, 1, null, { "1": 9 }), name });
+  const rows = [named("li", "李"), named("zhang", "张")];
+  const preview = previewRanking(rows, [{ id: 1, name: "d", weight: 50 }], "li", { 1: 9 });
+  assert.equal(preview.rank, 2);
+  assert.deepEqual(sortRows(rows, "model", "asc").map((r) => r.slug), ["zhang", "li"]);
+});
+
 test("preview updates composite and rank without touching stored rows", () => {
   const rows = [
     row("a", 9, 1, 1, { "1": 9, "2": 9, "3": 9 }),
@@ -105,11 +114,35 @@ test("score formatting keeps one decimal dimension values and two decimals total
   assert.equal(formatScore(null), "—");
 });
 
-test("relative bars use the dimension max with a floor of 10", () => {
+test("relative bars reach full width at the dimension max", () => {
   assert.equal(dimensionMax([row("a", 9, 1, 1, { "1": 12.5 })], 1), 12.5);
-  assert.equal(dimensionMax([row("b", 9, 1, 1, { "1": 8 })], 1), 10);
+  assert.equal(dimensionMax([row("b", 9, 1, 1, { "1": 8 })], 1), 8);
+  const tied = [row("a", 9, 1, 1, { "1": 7.5 }), row("b", 9, 1, 2, { "1": 7.5 })];
+  assert.equal(dimensionMax(tied, 1), 7.5);
+  assert.equal(barWidth(7.5, dimensionMax(tied, 1)), 100);
   assert.equal(barWidth(8, 10), 80);
+  assert.equal(barWidth(0, 0), 0);
   assert.equal(barWidth(null, 10), 0);
+});
+
+test("dimension ranks count scored models with a stable tie-break", () => {
+  const rows = [
+    row("a", 9, 1, 1, { "1": 9 }),
+    row("b", 8, 1, 2, { "1": 9 }),
+    row("c", 7, 1, 3, { "1": 7 }),
+    row("unscored", null, 0, null, {}),
+  ];
+  const ranks = dimensionRanks(rows, [1, 2]);
+  const dim1 = ranks.get(1);
+  assert.ok(dim1);
+  assert.equal(dim1.get("a"), 1);
+  assert.equal(dim1.get("b"), 2);
+  assert.equal(dim1.get("c"), 3);
+  assert.equal(dim1.size, 3);
+  assert.equal(dim1.has("unscored"), false);
+  assert.equal(ranks.get(2)?.size, 0);
+  assert.deepEqual(dimensionRanks([...rows].reverse(), [1]).get(1), dim1);
+  assert.deepEqual(rows.map((r) => r.slug), ["a", "b", "c", "unscored"]);
 });
 test("composite and preview stay stable across display order", () => {
   const natural = [

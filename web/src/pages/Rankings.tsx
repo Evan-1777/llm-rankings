@@ -137,7 +137,7 @@ export function Rankings() {
   } else if (error) {
     content = <ErrorState error={error} onRetry={reload} />;
   } else if (data) {
-    if (session.counts.dimensions === 0) {
+    if (dimensions.length === 0) {
       content = (
         <EmptyState
           title="尚未创建维度"

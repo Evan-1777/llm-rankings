@@ -13,7 +13,7 @@ interface SessionValue {
   logout: () => Promise<void>;
 }
 
-const emptyCounts = { models: 0, scoredModels: 0, dimensions: 0, scores: 0 };
+const emptyCounts = { models: 0, scoredModels: 0, dimensions: 0 };
 
 const SessionContext = createContext<SessionValue>({
   authenticated: false,

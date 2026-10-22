@@ -50,7 +50,7 @@ export function Workbench() {
     content = <PageLoading label="正在加载工作台" />;
   } else if (error) {
     content = <ErrorState error={error} onRetry={reload} />;
-  } else if (data && session.counts.dimensions === 0) {
+  } else if (data && dimensions.length === 0) {
     content = (
       <EmptyState title="尚未创建维度" text="评分需要维度与权重，先在设置中创建维度。">
         <Button variant="primary" onClick={() => navigate("/settings?tab=dimensions")}>

@@ -334,6 +334,28 @@ func TestZeroWeightRankingAndUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestDeleteScoreIsIdempotent(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	dimID := createDimension(t, e, "Reasoning", 50)
+	createModel(t, e, "m", "Model")
+	path := "/api/models/m/scores/" + itoa(dimID)
+	code, body, _ := e.do(t, e.admin, http.MethodPut, path, map[string]any{"value": 9, "note": "n"}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("put score = %d %s", code, body)
+	}
+	for i := 0; i < 2; i++ {
+		code, body, _ = e.do(t, e.admin, http.MethodDelete, path, nil, nil)
+		if code != http.StatusNoContent {
+			t.Fatalf("delete #%d = %d %s", i+1, code, body)
+		}
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodDelete, "/api/models/missing/scores/"+itoa(dimID), nil, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown model delete = %d %s", code, body)
+	}
+}
+
 func TestExportAndStatic(t *testing.T) {
 	e := newEnv(t)
 	code, _, _ := e.do(t, e.anon, http.MethodGet, "/api/export", nil, nil)

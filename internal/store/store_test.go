@@ -164,6 +164,43 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 		t.Fatalf("model cascade left scores")
 	}
 }
+
+func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	active, _ := s.CreateDimension(ctx, "Active", "", 50)
+	idle, _ := s.CreateDimension(ctx, "Idle", "", 0)
+	archived, _ := s.CreateDimension(ctx, "Archived", "", 50)
+	if _, err := s.CreateModel(ctx, "m", "Model", "", ""); err != nil {
+		t.Fatalf("create model: %v", err)
+	}
+	for _, id := range []int64{active.ID, idle.ID, archived.ID} {
+		if _, err := s.UpsertScore(ctx, "m", id, 8, ""); err != nil {
+			t.Fatalf("score %d: %v", id, err)
+		}
+	}
+	if _, err := s.SetDimensionArchived(ctx, archived.ID, true); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if _, err := s.CreateModel(ctx, "empty", "Empty", "", ""); err != nil {
+		t.Fatalf("create empty model: %v", err)
+	}
+	models, err := s.ListModels(ctx)
+	if err != nil {
+		t.Fatalf("list models: %v", err)
+	}
+	bySlug := make(map[string]ModelSummary, len(models))
+	for _, m := range models {
+		bySlug[m.Slug] = m
+	}
+	if got := bySlug["m"]; got.ScoreCount != 3 || got.ScoredDimensions != 1 {
+		t.Fatalf("m completeness = %d scores / %d scoreable, want 3 / 1", got.ScoreCount, got.ScoredDimensions)
+	}
+	if got := bySlug["empty"]; got.ScoreCount != 0 || got.ScoredDimensions != 0 {
+		t.Fatalf("empty model completeness = %+v", got)
+	}
+}
+
 func ids(dims []Dimension) []int64 {
 	out := make([]int64, len(dims))
 	for i, d := range dims {

@@ -160,6 +160,39 @@
   font-size: 20px;
 }
 
+.rankCol {
+  width: 96px;
+}
+
+.rankCell {
+  white-space: nowrap;
+}
+
+.rank {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rank b {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.rankTotal {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.rankMissing {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
 .barCol {
   width: 36%;
   min-width: 180px;
@@ -251,6 +284,10 @@
 
   .score {
     font-size: 18px;
+  }
+
+  .rankCol {
+    width: 76px;
   }
 
   .barCol {

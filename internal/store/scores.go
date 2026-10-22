@@ -108,7 +108,8 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	return Score{ModelID: modelID, DimensionID: dimensionID, Value: value, Note: note, UpdatedAt: updated}, nil
 }
 
-// DeleteScore removes a model's rating for one dimension.
+// DeleteScore removes a model's rating for one dimension. A missing rating is
+// not an error so retried multi-request saves can converge.
 func (s *Store) DeleteScore(ctx context.Context, modelSlug string, dimensionID int64) error {
 	var modelID int64
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE`, modelSlug).Scan(&modelID)
@@ -118,16 +119,6 @@ func (s *Store) DeleteScore(ctx context.Context, modelSlug string, dimensionID i
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx, `DELETE FROM scores WHERE model_id = ? AND dimension_id = ?`, modelID, dimensionID)
-	if err != nil {
-		return err
-	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	_, err = s.db.ExecContext(ctx, `DELETE FROM scores WHERE model_id = ? AND dimension_id = ?`, modelID, dimensionID)
+	return err
 }
