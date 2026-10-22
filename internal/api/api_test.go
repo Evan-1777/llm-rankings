@@ -356,6 +356,96 @@ func TestDeleteScoreIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPutScoreKeepsNoteWhenOmitted(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	dimID := createDimension(t, e, "Reasoning", 50)
+	createModel(t, e, "m", "Model")
+	path := "/api/models/m/scores/" + itoa(dimID)
+
+	noteOf := func(body []byte) string {
+		t.Helper()
+		var out struct {
+			Note string `json:"note"`
+		}
+		if err := json.Unmarshal(body, &out); err != nil {
+			t.Fatalf("decode score response: %v (%s)", err, body)
+		}
+		return out.Note
+	}
+
+	code, body, _ := e.do(t, e.admin, http.MethodPut, path, map[string]any{"value": 8, "note": "keep me"}, nil)
+	if code != http.StatusOK || noteOf(body) != "keep me" {
+		t.Fatalf("initial put = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"value": 9}, nil)
+	if code != http.StatusOK || noteOf(body) != "keep me" {
+		t.Fatalf("omitted note must keep the stored note: %d %s", code, body)
+	}
+	code, detail, _ := e.do(t, e.admin, http.MethodGet, "/api/models/m", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), "keep me") {
+		t.Fatalf("admin detail lost the note: %d %s", code, detail)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"value": 9, "note": ""}, nil)
+	if code != http.StatusOK || noteOf(body) != "" {
+		t.Fatalf("explicit empty note must clear: %d %s", code, body)
+	}
+
+	createModel(t, e, "fresh", "Fresh")
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/models/fresh/scores/"+itoa(dimID), map[string]any{"value": 7}, nil)
+	if code != http.StatusOK || noteOf(body) != "" {
+		t.Fatalf("new score without note must start empty: %d %s", code, body)
+	}
+}
+
+func TestDisplaySettingsEndpoint(t *testing.T) {
+	e := newEnv(t)
+	path := "/api/display-settings"
+
+	code, body, header := e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) {
+		t.Fatalf("anonymous default = %d %s", code, body)
+	}
+	if header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("GET cache-control = %q", header.Get("Cache-Control"))
+	}
+
+	code, _, _ = e.do(t, e.anon, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous put = %d, want 401", code)
+	}
+
+	e.login(t)
+	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{}, nil)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("missing field = %d, want 422", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true, "unknown": 1}, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("unknown field = %d, want 400", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, map[string]string{"Origin": "https://evil.test"})
+	if code != http.StatusForbidden {
+		t.Fatalf("cross-origin put = %d, want 403", code)
+	}
+
+	code, body, header = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":true`) {
+		t.Fatalf("admin put = %d %s", code, body)
+	}
+	if header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("PUT cache-control = %q", header.Get("Cache-Control"))
+	}
+	code, body, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":true`) {
+		t.Fatalf("anonymous read after write = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": false}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) {
+		t.Fatalf("disable = %d %s", code, body)
+	}
+}
+
 func TestExportAndStatic(t *testing.T) {
 	e := newEnv(t)
 	code, _, _ := e.do(t, e.anon, http.MethodGet, "/api/export", nil, nil)

@@ -62,8 +62,9 @@ func (s *Store) AllScores(ctx context.Context) ([]Score, error) {
 	return out, rows.Err()
 }
 
-// UpsertScore writes a rating for an enabled dimension.
-func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID int64, value float64, note string) (Score, error) {
+// UpsertScore writes a rating for an enabled dimension. A nil note keeps the
+// stored note on conflict; an explicit note replaces it (including an empty one).
+func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID int64, value float64, note *string) (Score, error) {
 	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return Score{}, fmt.Errorf("%w: score must be finite and not negative", ErrInvalid)
 	}
@@ -91,11 +92,22 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	}
 
 	now := nowStamp()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO scores (model_id, dimension_id, value, note, updated_at)
+	query := `INSERT INTO scores (model_id, dimension_id, value, note, updated_at)
 		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(model_id, dimension_id) DO UPDATE SET value = excluded.value, note = excluded.note, updated_at = excluded.updated_at`,
-		modelID, dimensionID, value, note, now)
-	if err != nil {
+		ON CONFLICT(model_id, dimension_id) DO UPDATE SET value = excluded.value, note = excluded.note, updated_at = excluded.updated_at
+		RETURNING note`
+	args := []any{modelID, dimensionID, value, "", now}
+	if note != nil {
+		args[3] = *note
+	} else {
+		query = `INSERT INTO scores (model_id, dimension_id, value, note, updated_at)
+			VALUES (?, ?, ?, '', ?)
+			ON CONFLICT(model_id, dimension_id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+			RETURNING note`
+		args = []any{modelID, dimensionID, value, now}
+	}
+	var storedNote string
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&storedNote); err != nil {
 		if isForeignKey(err) {
 			return Score{}, ErrNotFound
 		}
@@ -105,7 +117,7 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	if err != nil {
 		return Score{}, err
 	}
-	return Score{ModelID: modelID, DimensionID: dimensionID, Value: value, Note: note, UpdatedAt: updated}, nil
+	return Score{ModelID: modelID, DimensionID: dimensionID, Value: value, Note: storedNote, UpdatedAt: updated}, nil
 }
 
 // DeleteScore removes a model's rating for one dimension. A missing rating is

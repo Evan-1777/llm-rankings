@@ -11,7 +11,7 @@ import (
 
 type scoreInput struct {
 	Value *float64 `json:"value"`
-	Note  string   `json:"note"`
+	Note  *string  `json:"note"`
 }
 
 type scoreResponse struct {
@@ -36,7 +36,7 @@ func (s *Server) handlePutScore(w http.ResponseWriter, r *http.Request) {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请填写评分", map[string]string{"value": "请填写评分"})
 		return
 	}
-	if utf8.RuneCountInString(input.Note) > 500 {
+	if input.Note != nil && utf8.RuneCountInString(*input.Note) > 500 {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查评分", map[string]string{"note": "备注不能超过 500 个字符"})
 		return
 	}

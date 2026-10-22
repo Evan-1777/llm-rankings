@@ -12,6 +12,8 @@ import (
 	"llmrank/migrations"
 )
 
+func notePtr(value string) *string { return &value }
+
 func openTest(t *testing.T) (*Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
@@ -93,7 +95,7 @@ func TestDimensionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("model: %v", err)
 	}
-	if _, err := s.UpsertScore(ctx, m.Slug, d.ID, 8, "note"); err != nil {
+	if _, err := s.UpsertScore(ctx, m.Slug, d.ID, 8, notePtr("note")); err != nil {
 		t.Fatalf("score: %v", err)
 	}
 	if err := s.DeleteDimension(ctx, d.ID); err != nil {
@@ -126,7 +128,7 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 	}
 
 	for _, value := range []float64{0, 10, 12.5, 100} {
-		sc, err := s.UpsertScore(ctx, "gpt-5", d.ID, value, "")
+		sc, err := s.UpsertScore(ctx, "gpt-5", d.ID, value, notePtr(""))
 		if err != nil {
 			t.Fatalf("score %v: %v", value, err)
 		}
@@ -135,17 +137,17 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 		}
 	}
 	for _, value := range []float64{-1, math.NaN(), math.Inf(1)} {
-		if _, err := s.UpsertScore(ctx, "gpt-5", d.ID, value, ""); !errors.Is(err, ErrInvalid) {
+		if _, err := s.UpsertScore(ctx, "gpt-5", d.ID, value, notePtr("")); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("score %v error = %v, want ErrInvalid", value, err)
 		}
 	}
-	if _, err := s.UpsertScore(ctx, "missing", d.ID, 5, ""); !errors.Is(err, ErrNotFound) {
+	if _, err := s.UpsertScore(ctx, "missing", d.ID, 5, notePtr("")); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing model error = %v", err)
 	}
 	if _, err := s.SetDimensionArchived(ctx, d.ID, true); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
-	if _, err := s.UpsertScore(ctx, "gpt-5", d.ID, 5, ""); !errors.Is(err, ErrArchived) {
+	if _, err := s.UpsertScore(ctx, "gpt-5", d.ID, 5, notePtr("")); !errors.Is(err, ErrArchived) {
 		t.Fatalf("archived dimension error = %v", err)
 	}
 
@@ -175,7 +177,7 @@ func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
 		t.Fatalf("create model: %v", err)
 	}
 	for _, id := range []int64{active.ID, idle.ID, archived.ID} {
-		if _, err := s.UpsertScore(ctx, "m", id, 8, ""); err != nil {
+		if _, err := s.UpsertScore(ctx, "m", id, 8, notePtr("")); err != nil {
 			t.Fatalf("score %d: %v", id, err)
 		}
 	}
@@ -310,6 +312,49 @@ func TestDimensionOrderAppendArchiveRestoreAndRestart(t *testing.T) {
 	all, _ = again.ListDimensions(ctx, true)
 	if !equalIDs(all, a.ID, b.ID, d.ID) {
 		t.Fatalf("order lost on restart: %v", ids(all))
+	}
+}
+
+func TestDisplaySettingsDefaultsAndPersists(t *testing.T) {
+	s, path := openTest(t)
+	ctx := context.Background()
+
+	enabled, err := s.DisplaySettings(ctx)
+	if err != nil || enabled {
+		t.Fatalf("empty table = %v, %v; want off without error", enabled, err)
+	}
+	var rows int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM display_settings`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("migration seeded display_settings: rows=%d err=%v", rows, err)
+	}
+
+	if err := s.UpdateDisplaySettings(ctx, true); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if enabled, err = s.DisplaySettings(ctx); err != nil || !enabled {
+		t.Fatalf("enabled = %v, %v", enabled, err)
+	}
+	if err := s.UpdateDisplaySettings(ctx, true); err != nil {
+		t.Fatalf("repeat enable: %v", err)
+	}
+	if err := s.UpdateDisplaySettings(ctx, false); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if enabled, err = s.DisplaySettings(ctx); err != nil || enabled {
+		t.Fatalf("disabled = %v, %v", enabled, err)
+	}
+	if err := s.UpdateDisplaySettings(ctx, true); err != nil {
+		t.Fatalf("re-enable: %v", err)
+	}
+	s.Close()
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+	if enabled, err = reopened.DisplaySettings(ctx); err != nil || !enabled {
+		t.Fatalf("after reopen = %v, %v", enabled, err)
 	}
 }
 
