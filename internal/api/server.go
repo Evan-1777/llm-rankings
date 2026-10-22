@@ -70,7 +70,7 @@ func New(st *store.Store, mgr *auth.Manager, logger *slog.Logger, dist fs.FS, tr
 	mux.HandleFunc("/api", s.handleAPINotFound)
 	mux.Handle("/", s.static)
 
-	return chain(mux, s.recoverer, s.securityHeaders, s.logRequests, s.originGuard)
+	return chain(mux, s.recoverer, s.securityHeaders, s.logRequests, s.originGuard, s.maintenanceGate)
 }
 
 func chain(h http.Handler, middleware ...func(http.Handler) http.Handler) http.Handler {

@@ -401,16 +401,19 @@ func TestPutScoreKeepsNoteWhenOmitted(t *testing.T) {
 func TestDisplaySettingsEndpoint(t *testing.T) {
 	e := newEnv(t)
 	path := "/api/display-settings"
+	both := func(percentage, maintenance bool) map[string]any {
+		return map[string]any{"scorePercentageMode": percentage, "maintenanceMode": maintenance}
+	}
 
 	code, body, header := e.do(t, e.anon, http.MethodGet, path, nil, nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) {
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) || !strings.Contains(string(body), `"maintenanceMode":false`) {
 		t.Fatalf("anonymous default = %d %s", code, body)
 	}
 	if header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("GET cache-control = %q", header.Get("Cache-Control"))
 	}
 
-	code, _, _ = e.do(t, e.anon, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, nil)
+	code, _, _ = e.do(t, e.anon, http.MethodPut, path, both(true, true), nil)
 	if code != http.StatusUnauthorized {
 		t.Fatalf("anonymous put = %d, want 401", code)
 	}
@@ -418,31 +421,106 @@ func TestDisplaySettingsEndpoint(t *testing.T) {
 	e.login(t)
 	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{}, nil)
 	if code != http.StatusUnprocessableEntity {
-		t.Fatalf("missing field = %d, want 422", code)
+		t.Fatalf("missing fields = %d, want 422", code)
 	}
-	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true, "unknown": 1}, nil)
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "maintenanceMode") {
+		t.Fatalf("missing maintenance = %d %s, want 422", code, body)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true, "maintenanceMode": true, "unknown": 1}, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("unknown field = %d, want 400", code)
 	}
-	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, map[string]string{"Origin": "https://evil.test"})
+	code, _, _ = e.do(t, e.admin, http.MethodPut, path, both(true, true), map[string]string{"Origin": "https://evil.test"})
 	if code != http.StatusForbidden {
 		t.Fatalf("cross-origin put = %d, want 403", code)
 	}
 
-	code, body, header = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": true}, nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":true`) {
+	code, body, header = e.do(t, e.admin, http.MethodPut, path, both(true, false), nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":true`) || !strings.Contains(string(body), `"maintenanceMode":false`) {
 		t.Fatalf("admin put = %d %s", code, body)
 	}
 	if header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("PUT cache-control = %q", header.Get("Cache-Control"))
 	}
 	code, body, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":true`) {
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":true`) || !strings.Contains(string(body), `"maintenanceMode":false`) {
 		t.Fatalf("anonymous read after write = %d %s", code, body)
 	}
-	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{"scorePercentageMode": false}, nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) {
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, both(false, true), nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) || !strings.Contains(string(body), `"maintenanceMode":true`) {
+		t.Fatalf("maintenance only = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, both(false, false), nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"maintenanceMode":false`) {
 		t.Fatalf("disable = %d %s", code, body)
+	}
+}
+
+func TestMaintenanceGate(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	settingsPath := "/api/display-settings"
+	update := func(percentage, maintenance bool) {
+		t.Helper()
+		code, body, _ := e.do(t, e.admin, http.MethodPut, settingsPath, map[string]any{
+			"scorePercentageMode": percentage,
+			"maintenanceMode":     maintenance,
+		}, nil)
+		if code != http.StatusOK {
+			t.Fatalf("set maintenance=%v = %d %s", maintenance, code, body)
+		}
+	}
+
+	update(false, true)
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/rankings"},
+		{http.MethodGet, "/api/bootstrap"},
+		{http.MethodGet, "/api/models"},
+		{http.MethodGet, "/api/export"},
+		{http.MethodPost, "/api/dimensions"},
+	} {
+		code, body, _ := e.do(t, e.anon, tc.method, tc.path, nil, nil)
+		if code != http.StatusServiceUnavailable || !strings.Contains(string(body), `"maintenance"`) {
+			t.Fatalf("%s %s = %d %s, want 503 maintenance", tc.method, tc.path, code, body)
+		}
+	}
+
+	// Authentication, health and the public settings stay reachable.
+	code, body, _ := e.do(t, e.anon, http.MethodPost, "/api/auth/login", map[string]string{"password": "wrong"}, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("login during maintenance = %d %s, want 401 from the handler", code, body)
+	}
+	code, body, _ = e.do(t, e.anon, http.MethodGet, "/api/health", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("health during maintenance = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.anon, http.MethodGet, settingsPath, nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"maintenanceMode":true`) {
+		t.Fatalf("public settings during maintenance = %d %s", code, body)
+	}
+	for _, path := range []string{"/", "/login"} {
+		code, body, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
+		if code != http.StatusOK || !strings.Contains(string(body), "LLM Rank") {
+			t.Fatalf("SPA %s during maintenance = %d %s", path, code, body)
+		}
+	}
+
+	// The administrator keeps full access.
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/rankings", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("admin rankings during maintenance = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{"name": "D", "description": "", "weight": 10}, nil)
+	if code != http.StatusCreated {
+		t.Fatalf("admin write during maintenance = %d %s", code, body)
+	}
+
+	update(false, false)
+	code, body, _ = e.do(t, e.anon, http.MethodGet, "/api/rankings", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("anonymous access after disabling maintenance = %d %s", code, body)
 	}
 }
 

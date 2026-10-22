@@ -319,31 +319,40 @@ func TestDisplaySettingsDefaultsAndPersists(t *testing.T) {
 	s, path := openTest(t)
 	ctx := context.Background()
 
-	enabled, err := s.DisplaySettings(ctx)
-	if err != nil || enabled {
-		t.Fatalf("empty table = %v, %v; want off without error", enabled, err)
+	settings, err := s.DisplaySettings(ctx)
+	if err != nil || settings != (DisplaySettings{}) {
+		t.Fatalf("empty table = %+v, %v; want all switches off without error", settings, err)
 	}
 	var rows int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM display_settings`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("migration seeded display_settings: rows=%d err=%v", rows, err)
 	}
 
-	if err := s.UpdateDisplaySettings(ctx, true); err != nil {
-		t.Fatalf("enable: %v", err)
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true}); err != nil {
+		t.Fatalf("enable percentage: %v", err)
 	}
-	if enabled, err = s.DisplaySettings(ctx); err != nil || !enabled {
-		t.Fatalf("enabled = %v, %v", enabled, err)
+	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || settings.MaintenanceMode {
+		t.Fatalf("percentage only = %+v, %v", settings, err)
 	}
-	if err := s.UpdateDisplaySettings(ctx, true); err != nil {
-		t.Fatalf("repeat enable: %v", err)
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{MaintenanceMode: true}); err != nil {
+		t.Fatalf("enable maintenance: %v", err)
 	}
-	if err := s.UpdateDisplaySettings(ctx, false); err != nil {
+	if settings, err = s.DisplaySettings(ctx); err != nil || settings.ScorePercentageMode || !settings.MaintenanceMode {
+		t.Fatalf("maintenance only = %+v, %v", settings, err)
+	}
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true, MaintenanceMode: true}); err != nil {
+		t.Fatalf("enable both: %v", err)
+	}
+	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || !settings.MaintenanceMode {
+		t.Fatalf("both enabled = %+v, %v", settings, err)
+	}
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{}); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
-	if enabled, err = s.DisplaySettings(ctx); err != nil || enabled {
-		t.Fatalf("disabled = %v, %v", enabled, err)
+	if settings, err = s.DisplaySettings(ctx); err != nil || settings != (DisplaySettings{}) {
+		t.Fatalf("disabled = %+v, %v", settings, err)
 	}
-	if err := s.UpdateDisplaySettings(ctx, true); err != nil {
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{MaintenanceMode: true}); err != nil {
 		t.Fatalf("re-enable: %v", err)
 	}
 	s.Close()
@@ -353,8 +362,8 @@ func TestDisplaySettingsDefaultsAndPersists(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	defer reopened.Close()
-	if enabled, err = reopened.DisplaySettings(ctx); err != nil || !enabled {
-		t.Fatalf("after reopen = %v, %v", enabled, err)
+	if settings, err = reopened.DisplaySettings(ctx); err != nil || settings.ScorePercentageMode || !settings.MaintenanceMode {
+		t.Fatalf("after reopen = %+v, %v", settings, err)
 	}
 }
 

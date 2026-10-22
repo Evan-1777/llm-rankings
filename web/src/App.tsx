@@ -11,19 +11,20 @@ import {
 import { Button } from "./components/Button";
 import { Header } from "./components/Header";
 import { PageHeading } from "./components/PageHeading";
-import { EmptyState } from "./components/States";
+import { EmptyState, PageLoading } from "./components/States";
 import { ToastProvider } from "./components/Toast";
 import { ConfirmProvider } from "./components/Confirm";
 import { useDocumentTitle } from "./lib/useDocumentTitle";
-import { DisplayPreferencesProvider } from "./preferences/DisplayPreferences";
+import { DisplayPreferencesProvider, useDisplayPreferences } from "./preferences/DisplayPreferences";
 import { Compare } from "./pages/Compare";
 import { Login } from "./pages/Login";
+import { Maintenance } from "./pages/Maintenance";
 import { ModelDetail } from "./pages/ModelDetail";
 import { Rankings } from "./pages/Rankings";
 import { Settings } from "./pages/Settings";
 import { Workbench } from "./pages/Workbench";
 import { RequireAdmin } from "./session/RequireAdmin";
-import { SessionProvider } from "./session/SessionProvider";
+import { SessionProvider, useSession } from "./session/SessionProvider";
 import styles from "./App.module.css";
 
 function ScrollToTop() {
@@ -34,7 +35,26 @@ function ScrollToTop() {
   return null;
 }
 
+function BootLoading() {
+  return (
+    <main id="main" className="shell page-enter">
+      <PageLoading label="正在加载站点" />
+    </main>
+  );
+}
+
 function RootLayout() {
+  const location = useLocation();
+  const { maintenanceMode, loading: displayLoading } = useDisplayPreferences();
+  const { authenticated, loading: sessionLoading } = useSession();
+  const isLogin = location.pathname === "/login";
+
+  if (!isLogin && displayLoading) return <BootLoading />;
+  if (maintenanceMode && !isLogin) {
+    if (sessionLoading) return <BootLoading />;
+    if (!authenticated) return <Maintenance />;
+  }
+
   return (
     <>
       <a className="skip-link" href="#main">

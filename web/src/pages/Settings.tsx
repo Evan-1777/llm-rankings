@@ -54,6 +54,8 @@ export function Settings() {
     setDimensionScoreEmphasis,
     scorePercentageMode,
     setScorePercentageMode,
+    maintenanceMode,
+    setMaintenanceMode,
     loading: displayLoading,
     saving: displaySaving,
   } = useDisplayPreferences();
@@ -538,6 +540,21 @@ export function Settings() {
               onChange={(event) => void setScorePercentageMode(event.target.checked)}
             />
             {scorePercentageMode ? "开启" : "关闭"}
+          </span>
+        </label>
+        <label className={styles.preference}>
+          <span className={styles.preferenceCopy}>
+            <span className={styles.preferenceLabel}>维护模式</span>
+            <span className={styles.preferenceHint}>所有设备 · 未登录访客只显示维护页</span>
+          </span>
+          <span className={ui.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={maintenanceMode}
+              disabled={displayLoading || displaySaving}
+              onChange={(event) => void setMaintenanceMode(event.target.checked)}
+            />
+            {maintenanceMode ? "开启" : "关闭"}
           </span>
         </label>
         <label className={styles.preference}>

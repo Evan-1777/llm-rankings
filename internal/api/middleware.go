@@ -18,6 +18,33 @@ func (s *Server) admin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// maintenanceGate blocks anonymous API traffic while maintenance mode is on.
+// The health probe, authentication and the public display settings stay
+// reachable so the SPA can render the maintenance page and log in.
+func (s *Server) maintenanceGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api" && !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/health", "/api/auth/login", "/api/auth/logout", "/api/display-settings":
+			next.ServeHTTP(w, r)
+			return
+		}
+		settings, err := s.store.DisplaySettings(r.Context())
+		if err != nil {
+			s.internalError(w, err)
+			return
+		}
+		if !settings.MaintenanceMode || s.auth.Authenticated(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		writeError(w, http.StatusServiceUnavailable, "maintenance", "站点维护中，请稍后访问")
+	})
+}
+
 func (s *Server) originGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

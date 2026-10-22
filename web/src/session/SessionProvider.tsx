@@ -63,6 +63,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await api.logout();
+    // The bootstrap probe is blocked during maintenance; drop the local
+    // session first so the UI does not keep the admin header after logout.
+    setAuthenticated(false);
     await refresh();
   }, [refresh]);
 
