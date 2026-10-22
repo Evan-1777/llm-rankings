@@ -92,22 +92,19 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	}
 
 	now := nowStamp()
-	query := `INSERT INTO scores (model_id, dimension_id, value, note, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(model_id, dimension_id) DO UPDATE SET value = excluded.value, note = excluded.note, updated_at = excluded.updated_at
-		RETURNING note`
-	args := []any{modelID, dimensionID, value, "", now}
+	var noteArg any
 	if note != nil {
-		args[3] = *note
-	} else {
-		query = `INSERT INTO scores (model_id, dimension_id, value, note, updated_at)
-			VALUES (?, ?, ?, '', ?)
-			ON CONFLICT(model_id, dimension_id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-			RETURNING note`
-		args = []any{modelID, dimensionID, value, now}
+		noteArg = *note
 	}
+	query := `INSERT INTO scores (model_id, dimension_id, value, note, updated_at)
+		VALUES (?, ?, ?, COALESCE(?, ''), ?)
+		ON CONFLICT(model_id, dimension_id) DO UPDATE SET
+			value = excluded.value,
+			note = COALESCE(?, scores.note),
+			updated_at = excluded.updated_at
+		RETURNING note`
 	var storedNote string
-	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&storedNote); err != nil {
+	if err := s.db.QueryRowContext(ctx, query, modelID, dimensionID, value, noteArg, now, noteArg).Scan(&storedNote); err != nil {
 		if isForeignKey(err) {
 			return Score{}, ErrNotFound
 		}

@@ -146,9 +146,9 @@ export function sortRows(rows: RankRow[], key: string, dir: SortDir, options: So
   return sorted;
 }
 
-/** Workbench view sort: models and coverage include unscored rows; value keys keep them last. */
+/** Workbench view sort: requests unscored participation; sortRows keeps it to the model and coverage keys. */
 export function sortWorkbenchRows(rows: RankRow[], key: string, dir: SortDir): RankRow[] {
-  return sortRows(rows, key, dir, { keepUnscored: key === "model" || key === "coverage" });
+  return sortRows(rows, key, dir, { keepUnscored: true });
 }
 
 function compareOfficial(a: RankRow, b: RankRow): number {
