@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ScoreRange } from "../lib/scoreEmphasis";
-import { formatGapPercentile, scoreEmphasisTone } from "../lib/scoreEmphasis";
+import { formatStrengthPercentile, scoreEmphasisTone } from "../lib/scoreEmphasis";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { formatDimension } from "../domain/ranking";
 import styles from "./DimensionScore.module.css";
@@ -26,7 +26,7 @@ export function DimensionScore({ value, range, className }: DimensionScoreProps)
         } as CSSProperties);
   return (
     <span className={[styles.score, tone ? styles.tone : "", className ?? ""].filter(Boolean).join(" ")} style={style}>
-      {scorePercentageMode ? formatGapPercentile(value, range) : formatDimension(value)}
+      {scorePercentageMode ? formatStrengthPercentile(value, range) : formatDimension(value)}
     </span>
   );
 }

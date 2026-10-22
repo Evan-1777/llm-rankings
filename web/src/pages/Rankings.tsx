@@ -15,7 +15,7 @@ import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
 import { dimensionKey, formatScore, sortRows, type SortDir } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatGapPercentile, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatStrengthPercentile, scoreRange } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -192,7 +192,7 @@ export function Rankings() {
                   </th>
                   <SortHeader label="模型" className={styles.modelCol} active={sort.key === "model"} dir={sort.dir} onClick={() => updateSort("model")} />
                   <SortHeader
-                    label={scorePercentageMode ? "综合差距" : "综合分"}
+                    label={scorePercentageMode ? "综合强度" : "综合分"}
                     className={styles.scoreCol}
                     right
                     active={sort.key === "score"}
@@ -232,7 +232,7 @@ export function Rankings() {
                         <span className={styles.vendor}>{model.vendor || "—"}</span>
                       </td>
                       <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
-                        {scorePercentageMode ? formatGapPercentile(model.score, compositeRange) : formatScore(model.score)}
+                        {scorePercentageMode ? formatStrengthPercentile(model.score, compositeRange) : formatScore(model.score)}
                       </td>
                       <td className={styles.td}>
                         <Coverage coverage={model.coverage} provisional={model.provisional} />
@@ -273,7 +273,7 @@ export function Rankings() {
               <span className={styles.footMark} aria-hidden="true" />
               覆盖率低于 80% 标记为暂定
             </p>
-            <p>权重合计 {data.totalWeight} / {scorePercentageMode ? "分差百分比" : "加权平均"}</p>
+            <p>权重合计 {data.totalWeight} / {scorePercentageMode ? "相对强度" : "加权平均"}</p>
           </div>
         </>
       );
@@ -311,8 +311,8 @@ export function Rankings() {
           <span className={ui.sectionMeta}>
             {scorePercentageMode
               ? compositeRange
-                ? "分差百分比 / 1% = 最高分"
-                : "分差百分比 / 需至少两个不同分值"
+                ? "相对强度 / 100% = 最强"
+                : "相对强度 / 需至少两个不同分值"
               : "加权平均 / 全部模型"}
           </span>
           {dimensionScoreEmphasis ? (

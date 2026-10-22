@@ -40,37 +40,27 @@ export function dimensionScoreRanges(rows: readonly ScoreRow[], dimensionIds: re
   return ranges;
 }
 
-/** Distance from the best score, where the highest score is 1% and the lowest is 100%. */
-export function gapPercentile(value: number | null | undefined, range: ScoreRange | null | undefined): number | null {
+/** Relative strength inside the range, where the highest score is 100% and the lowest is 1%. */
+export function strengthPercentile(value: number | null | undefined, range: ScoreRange | null | undefined): number | null {
   if (range == null || value == null || !Number.isFinite(value) || value < 0) return null;
   const span = range.max - range.min;
   if (!(span > 0)) return null;
   // Divide before multiplying so scores near Number.MAX_VALUE cannot overflow.
-  const gap = 1 + 99 * ((range.max - value) / span);
-  if (!Number.isFinite(gap)) return null;
-  return Math.min(100, Math.max(1, gap));
+  const strength = 1 + 99 * ((value - range.min) / span);
+  if (!Number.isFinite(strength)) return null;
+  return Math.min(100, Math.max(1, strength));
 }
 
-/** Formats the gap percentile with one decimal; only real extremes may render as 1% or 100%. */
-export function formatGapPercentile(value: number | null | undefined, range: ScoreRange | null | undefined): string {
-  const gap = gapPercentile(value, range);
-  if (gap == null || range == null) return "—";
+/** Formats the strength percentile with one decimal; only real extremes may render as 1% or 100%. */
+export function formatStrengthPercentile(value: number | null | undefined, range: ScoreRange | null | undefined): string {
+  const strength = strengthPercentile(value, range);
+  if (strength == null || range == null) return "—";
   const best = value === range.max;
   const worst = value === range.min;
-  let rounded = Math.round(gap * 10) / 10;
-  if (!best && rounded <= 1) rounded = 1.1;
-  if (!worst && rounded >= 100) rounded = 99.9;
+  let rounded = Math.round(strength * 10) / 10;
+  if (!best && rounded >= 100) rounded = 99.9;
+  if (!worst && rounded <= 1) rounded = 1.1;
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
-}
-
-/** Position inside the range where the lowest score is 0% and the highest is 100%. */
-export function scorePercentile(value: number | null | undefined, range: ScoreRange | null | undefined): number | null {
-  if (range == null || value == null || !Number.isFinite(value) || value < 0) return null;
-  const span = range.max - range.min;
-  if (!(span > 0)) return null;
-  const position = ((value - range.min) / span) * 100;
-  if (!Number.isFinite(position)) return null;
-  return Math.min(100, Math.max(0, position));
 }
 
 /** Tone of a score inside its range: warm red when low, cool blue when high, nothing near the middle. */

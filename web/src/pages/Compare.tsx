@@ -12,7 +12,7 @@ import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
 import { formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatGapPercentile, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatStrengthPercentile, scoreRange } from "../lib/scoreEmphasis";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -113,9 +113,9 @@ export function Compare() {
                     </div>
                     <span className={styles.vendor}>{model.vendor || "—"}</span>
                     <div className={styles.modelScoreBlock}>
-                      {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合差距</span> : null}
+                      {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合强度</span> : null}
                       <div className={styles.modelScore}>
-                        {scorePercentageMode ? formatGapPercentile(model.score, compositeRange) : formatScore(model.score)}
+                        {scorePercentageMode ? formatStrengthPercentile(model.score, compositeRange) : formatScore(model.score)}
                       </div>
                     </div>
                     <div className={styles.coverageRow}>
@@ -161,8 +161,8 @@ export function Compare() {
               </header>
               <div className={styles.cardScore}>
                 <div className={styles.cardScoreValue}>
-                  {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合差距</span> : null}
-                  <strong>{scorePercentageMode ? formatGapPercentile(model.score, compositeRange) : formatScore(model.score)}</strong>
+                  {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合强度</span> : null}
+                  <strong>{scorePercentageMode ? formatStrengthPercentile(model.score, compositeRange) : formatScore(model.score)}</strong>
                 </div>
                 <Coverage coverage={model.coverage} provisional={model.provisional} />
               </div>
@@ -231,7 +231,7 @@ export function Compare() {
         <p className={styles.count}>
           {selected.length} / 4
           {selected.length >= 4 ? " · 已达上限" : ""}
-          {scorePercentageMode ? " · 分差 · 1% = 最高分" : ""}
+          {scorePercentageMode ? " · 百分比 · 100% = 最强" : ""}
         </p>
       </div>
 

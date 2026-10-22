@@ -528,7 +528,7 @@ export function Settings() {
         <label className={styles.preference}>
           <span className={styles.preferenceCopy}>
             <span className={styles.preferenceLabel}>百分比模式</span>
-            <span className={styles.preferenceHint}>所有设备 · 1% = 最高分 · 100% = 最低分</span>
+            <span className={styles.preferenceHint}>所有设备 · 100% = 最强 · 1% = 最弱</span>
           </span>
           <span className={ui.checkboxRow}>
             <input
