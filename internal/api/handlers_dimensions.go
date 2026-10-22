@@ -99,6 +99,43 @@ func validateDimension(name, description string, weight int) map[string]string {
 	return fields
 }
 
+type dimensionOrderInput struct {
+	IDs *[]int64 `json:"ids"`
+}
+
+func (s *Server) handleReorderDimensions(w http.ResponseWriter, r *http.Request) {
+	var input dimensionOrderInput
+	if !s.readJSON(w, r, &input) {
+		return
+	}
+	if input.IDs == nil {
+		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度顺序", map[string]string{"ids": "请提供完整的维度顺序"})
+		return
+	}
+	ids := *input.IDs
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度顺序", map[string]string{"ids": "维度 ID 必须为正整数"})
+			return
+		}
+		if seen[id] {
+			writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度顺序", map[string]string{"ids": "维度顺序不能重复"})
+			return
+		}
+		seen[id] = true
+	}
+	if err := s.store.ReorderDimensions(r.Context(), ids); err != nil {
+		if errors.Is(err, store.ErrOrderMismatch) {
+			writeError(w, http.StatusConflict, "conflict", "维度列表已变化，请重新加载")
+			return
+		}
+		s.internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request) {
 	var input dimensionInput
 	if !s.readJSON(w, r, &input) {

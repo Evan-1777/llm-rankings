@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { api, errorMessage } from "../api/client";
+import { ApiError, api, errorMessage } from "../api/client";
 import type { Dimension, ModelSummary } from "../api/types";
 import { Button, IconButton } from "../components/Button";
 import { useConfirm } from "../components/Confirm";
@@ -16,6 +16,7 @@ import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useSession } from "../session/SessionProvider";
 import styles from "./Settings.module.css";
+import { moveVisibleOrder } from "./dimensionOrder";
 
 type Tab = "dimensions" | "models" | "data";
 
@@ -31,8 +32,16 @@ function resolveTab(raw: string | null): Tab {
 
 export function Settings() {
   useDocumentTitle("设置");
+  const [orderBusy, setOrderBusy] = useState(false);
+  const orderLock = useRef(false);
+  const pendingOrderReload = useRef(false);
   const { data, loading, error, reload } = useAsyncData(async (signal) => {
     const [dimensions, models] = await Promise.all([api.dimensions(true, signal), api.models(signal)]);
+    if (pendingOrderReload.current) {
+      pendingOrderReload.current = false;
+      orderLock.current = false;
+      setOrderBusy(false);
+    }
     return { dimensions: dimensions.dimensions, models: models.models };
   }, []);
   const session = useSession();
@@ -46,6 +55,11 @@ export function Settings() {
   const [modelOpen, setModelOpen] = useState(false);
   const [modelEdit, setModelEdit] = useState<ModelSummary | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [drag, setDrag] = useState<{ id: number; over: number | null } | null>(null);
+  const dragRef = useRef<{ pointerId: number; id: number; from: number; over: number | null; y: number; raf: number | null } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const handlesRef = useRef(new Map<number, HTMLButtonElement>());
+  const pendingFocus = useRef<number | null>(null);
 
   const tab = resolveTab(params.get("tab"));
   const dimensions = data?.dimensions ?? [];
@@ -55,6 +69,7 @@ export function Settings() {
   const visibleDimensions = showArchived ? dimensions : activeDimensions;
   const totalScores = models.reduce((sum, model) => sum + model.scoreCount, 0);
   const totalWeight = activeDimensions.reduce((sum, dimension) => sum + dimension.weight, 0);
+  const visibleKey = visibleDimensions.map((dimension) => dimension.id).join(",");
 
   const setTab = (next: Tab) => {
     const nextParams = new URLSearchParams(params);
@@ -67,6 +82,158 @@ export function Settings() {
     reload();
     void session.refresh();
   };
+
+  const stopAutoScroll = () => {
+    const current = dragRef.current;
+    if (current?.raf != null) {
+      cancelAnimationFrame(current.raf);
+      current.raf = null;
+    }
+  };
+
+  const endDrag = () => {
+    stopAutoScroll();
+    dragRef.current = null;
+    setDrag(null);
+  };
+
+  const targetIndexAt = (y: number): number | null => {
+    const list = listRef.current;
+    if (!list) return null;
+    const bounds = list.getBoundingClientRect();
+    if (y < bounds.top || y > bounds.bottom) return null;
+    const rows = Array.from(list.querySelectorAll<HTMLElement>("[data-dim-row]"));
+    if (rows.length === 0) return null;
+    for (let index = 0; index < rows.length; index += 1) {
+      const rect = rows[index].getBoundingClientRect();
+      if (y < rect.top + rect.height / 2) return index;
+    }
+    return rows.length - 1;
+  };
+
+  const updateTarget = () => {
+    const current = dragRef.current;
+    if (!current) return;
+    const over = targetIndexAt(current.y);
+    if (over === current.over) return;
+    current.over = over;
+    setDrag({ id: current.id, over });
+  };
+
+  const autoScroll = () => {
+    const current = dragRef.current;
+    if (!current || current.raf != null) return;
+    const step = () => {
+      const active = dragRef.current;
+      if (!active) return;
+      let delta = 0;
+      if (active.y < 48) delta = -Math.min(20, (48 - active.y) / 2 + 4);
+      else if (active.y > window.innerHeight - 48) delta = Math.min(20, (active.y - (window.innerHeight - 48)) / 2 + 4);
+      if (delta === 0) {
+        active.raf = null;
+        return;
+      }
+      const before = window.scrollY;
+      window.scrollBy(0, delta);
+      if (window.scrollY === before) {
+        active.raf = null;
+        return;
+      }
+      updateTarget();
+      active.raf = requestAnimationFrame(step);
+    };
+    current.raf = requestAnimationFrame(step);
+  };
+
+  const saveOrder = async (ids: number[], focusId?: number) => {
+    if (orderLock.current) return;
+    orderLock.current = true;
+    setOrderBusy(true);
+    try {
+      await api.reorderDimensions(ids);
+      toast("维度顺序已保存");
+      if (focusId != null) pendingFocus.current = focusId;
+      pendingOrderReload.current = true;
+      reload();
+      void session.refresh();
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 409) {
+        toast("维度列表已变化，已重新加载", "error");
+        pendingOrderReload.current = true;
+        reload();
+        return;
+      }
+      orderLock.current = false;
+      setOrderBusy(false);
+      toast(errorMessage(caught), "error");
+    }
+  };
+
+  const beginDrag = (event: React.PointerEvent<HTMLButtonElement>, dimension: Dimension, index: number) => {
+    if (orderBusy || event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, id: dimension.id, from: index, over: index, y: event.clientY, raf: null };
+    setDrag({ id: dimension.id, over: index });
+    autoScroll();
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const current = dragRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    current.y = event.clientY;
+    updateTarget();
+    autoScroll();
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const current = dragRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const { from, over } = current;
+    endDrag();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (over == null || over === from) return;
+    const order = moveVisibleOrder(dimensions.map((item) => item.id), visibleDimensions.map((item) => item.id), from, over);
+    if (order) void saveOrder(order);
+  };
+
+  const handleOrderKey = (event: React.KeyboardEvent<HTMLButtonElement>, dimension: Dimension, index: number) => {
+    if (event.key === "Escape" && dragRef.current) {
+      event.preventDefault();
+      endDrag();
+      return;
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    if (orderBusy) return;
+    const to = event.key === "ArrowUp" ? index - 1 : index + 1;
+    if (to < 0 || to >= visibleDimensions.length) return;
+    const order = moveVisibleOrder(dimensions.map((item) => item.id), visibleDimensions.map((item) => item.id), index, to);
+    if (order) void saveOrder(order, dimension.id);
+  };
+
+  useEffect(() => {
+    if (dragRef.current) endDrag();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey, showArchived]);
+
+  useEffect(() => {
+    if (!data) return;
+    const id = pendingFocus.current;
+    if (id == null) return;
+    handlesRef.current.get(id)?.focus();
+    pendingFocus.current = null;
+  }, [data]);
+
+  useEffect(
+    () => () => {
+      const current = dragRef.current;
+      if (current?.raf != null) cancelAnimationFrame(current.raf);
+      dragRef.current = null;
+    },
+    [],
+  );
 
   const openNewDimension = () => {
     setDimensionEdit(null);
@@ -193,7 +360,7 @@ export function Settings() {
             </Button>
           </EmptyState>
         ) : (
-          <div className={styles.list}>
+          <div className={styles.list} ref={listRef}>
             <div className={`${styles.listHead} ${styles.dimCols}`}>
               <span>#</span>
               <span>维度</span>
@@ -202,8 +369,32 @@ export function Settings() {
               <span className={styles.actionsHead}>操作</span>
             </div>
             {visibleDimensions.map((dimension, index) => (
-              <div className={`${styles.dimRow} ${dimension.archivedAt ? styles.archived : ""}`} key={dimension.id}>
-                <span className={styles.index}>{String(index + 1).padStart(2, "0")}</span>
+              <div
+                className={`${styles.dimRow} ${dimension.archivedAt ? styles.archived : ""} ${drag?.id === dimension.id ? styles.dragSource : ""} ${
+                  drag && drag.id !== dimension.id && drag.over === index ? styles.dropTarget : ""
+                }`}
+                data-dim-row
+                key={dimension.id}
+              >
+                <button
+                  type="button"
+                  className={styles.handle}
+                  ref={(node) => {
+                    if (node) handlesRef.current.set(dimension.id, node);
+                    else handlesRef.current.delete(dimension.id);
+                  }}
+                  aria-label={`调整维度顺序：${dimension.name}`}
+                  disabled={orderBusy}
+                  onPointerDown={(event) => beginDrag(event, dimension, index)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={finishDrag}
+                  onPointerCancel={endDrag}
+                  onLostPointerCapture={endDrag}
+                  onKeyDown={(event) => handleOrderKey(event, dimension, index)}
+                >
+                  <Icon name="grip" size={14} />
+                  <span className={styles.handleIndex}>{String(index + 1).padStart(2, "0")}</span>
+                </button>
                 <div className={styles.nameBlock}>
                   <span className={styles.itemName}>{dimension.name}</span>
                   {dimension.description ? <span className={styles.itemMeta}>{dimension.description}</span> : null}

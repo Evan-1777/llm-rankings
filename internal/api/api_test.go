@@ -382,3 +382,120 @@ func TestExportAndStatic(t *testing.T) {
 func itoa(value int64) string {
 	return strconv.FormatInt(value, 10)
 }
+
+type dimensionSummary struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Weight    int    `json:"weight"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func (e *env) dimensionList(t *testing.T, client *http.Client, path string) []dimensionSummary {
+	t.Helper()
+	code, body, _ := e.do(t, client, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("GET %s = %d %s", path, code, body)
+	}
+	var out struct {
+		Dimensions []dimensionSummary `json:"dimensions"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return out.Dimensions
+}
+
+func dimensionIDs(list []dimensionSummary) []int64 {
+	out := make([]int64, len(list))
+	for i, dimension := range list {
+		out[i] = dimension.ID
+	}
+	return out
+}
+
+func TestReorderDimensionsFlow(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+
+	code, body, _ := e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": []int64{}}, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("empty library order = %d %s", code, body)
+	}
+
+	first := createDimension(t, e, "First", 10)
+	second := createDimension(t, e, "Second", 20)
+	third := createDimension(t, e, "Third", 30)
+	createModel(t, e, "model-a", "Model A")
+
+	want := []int64{third, first, second}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": want}, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("reorder = %d %s", code, body)
+	}
+
+	for _, path := range []string{
+		"/api/bootstrap",
+		"/api/dimensions?includeArchived=1",
+		"/api/rankings",
+		"/api/models/model-a",
+		"/api/export",
+	} {
+		got := dimensionIDs(e.dimensionList(t, e.admin, path))
+		if len(got) != len(want) {
+			t.Fatalf("%s dimensions = %v", path, got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s order = %v, want %v", path, got, want)
+			}
+		}
+	}
+
+	before := e.dimensionList(t, e.admin, "/api/dimensions?includeArchived=1")
+	for name, payload := range map[string]any{
+		"missing":      map[string]any{},
+		"null":         map[string]any{"ids": nil},
+		"short":        map[string]any{"ids": []int64{third, first}},
+		"unknown":      map[string]any{"ids": []int64{third, first, second, 999}},
+		"duplicate":    map[string]any{"ids": []int64{third, third, first}},
+		"non-positive": map[string]any{"ids": []int64{third, first, 0}},
+	} {
+		code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", payload, nil)
+		wantStatus := http.StatusUnprocessableEntity
+		if name == "short" || name == "unknown" {
+			wantStatus = http.StatusConflict
+		}
+		if code != wantStatus {
+			t.Fatalf("%s order = %d %s, want %d", name, code, body, wantStatus)
+		}
+		if wantStatus == http.StatusUnprocessableEntity && !strings.Contains(string(body), `"ids"`) {
+			t.Fatalf("%s order missing fields.ids: %s", name, body)
+		}
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": "broken"}, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("type error order = %d %s, want 400", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": []int64{}}, nil)
+	if code != http.StatusConflict {
+		t.Fatalf("empty order on non-empty library = %d %s, want 409", code, body)
+	}
+	after := e.dimensionList(t, e.admin, "/api/dimensions?includeArchived=1")
+	if len(after) != len(before) {
+		t.Fatalf("failed orders changed dimensions: %v", after)
+	}
+	for i := range before {
+		if after[i].ID != before[i].ID || after[i].UpdatedAt != before[i].UpdatedAt {
+			t.Fatalf("failed order changed dimension %d: %+v -> %+v", before[i].ID, before[i], after[i])
+		}
+	}
+
+	code, _, _ = e.do(t, e.anon, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": want}, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous reorder = %d, want 401", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": want}, map[string]string{"Origin": "https://evil.test"})
+	if code != http.StatusForbidden {
+		t.Fatalf("cross-origin reorder = %d, want 403", code)
+	}
+}

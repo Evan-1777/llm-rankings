@@ -22,6 +22,8 @@ var (
 	ErrConflict = errors.New("conflict")
 	ErrArchived = errors.New("dimension is archived")
 	ErrInvalid  = errors.New("invalid value")
+	// ErrOrderMismatch means a reorder payload is not the current dimension set.
+	ErrOrderMismatch = errors.New("dimension order mismatch")
 )
 
 const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"

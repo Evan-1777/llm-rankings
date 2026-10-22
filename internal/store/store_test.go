@@ -2,10 +2,14 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"math"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"llmrank/migrations"
 )
 
 func openTest(t *testing.T) (*Store, string) {
@@ -158,5 +162,162 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 	scores, _ = s.ScoresForModel(ctx, m.ID)
 	if len(scores) != 0 {
 		t.Fatalf("model cascade left scores")
+	}
+}
+func ids(dims []Dimension) []int64 {
+	out := make([]int64, len(dims))
+	for i, d := range dims {
+		out[i] = d.ID
+	}
+	return out
+}
+
+func equalIDs(got []Dimension, want ...int64) bool {
+	gotIDs := ids(got)
+	if len(gotIDs) != len(want) {
+		return false
+	}
+	for i := range want {
+		if gotIDs[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDimensionOrderMigrationKeepsLegacyOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open legacy: %v", err)
+	}
+	body, err := migrations.FS.ReadFile("001_init.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(body)); err != nil {
+		t.Fatalf("legacy schema: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES ('001_init.sql', ?)`, nowStamp()); err != nil {
+		t.Fatal(err)
+	}
+	now := nowStamp()
+	for i, name := range []string{"First", "Second", "Third"} {
+		if _, err := db.Exec(`INSERT INTO dimensions (id, name, description, weight, created_at, updated_at) VALUES (?, ?, '', 10, ?, ?)`,
+			int64(i+1)*10, name, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open migrated store: %v", err)
+	}
+	defer s.Close()
+	dims, err := s.ListDimensions(context.Background(), true)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !equalIDs(dims, 10, 20, 30) {
+		t.Fatalf("legacy order changed: %v", ids(dims))
+	}
+	if dims[0].Position != 10 || dims[1].Position != 20 || dims[2].Position != 30 {
+		t.Fatalf("positions not seeded from ids: %+v", dims)
+	}
+}
+
+func TestDimensionOrderAppendArchiveRestoreAndRestart(t *testing.T) {
+	s, path := openTest(t)
+	ctx := context.Background()
+	a, _ := s.CreateDimension(ctx, "A", "", 10)
+	b, _ := s.CreateDimension(ctx, "B", "", 10)
+	c, _ := s.CreateDimension(ctx, "C", "", 10)
+
+	if err := s.ReorderDimensions(ctx, []int64{c.ID, a.ID, b.ID}); err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	if _, err := s.SetDimensionArchived(ctx, b.ID, true); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	all, _ := s.ListDimensions(ctx, true)
+	if !equalIDs(all, c.ID, a.ID, b.ID) {
+		t.Fatalf("archive changed order: %v", ids(all))
+	}
+	if _, err := s.SetDimensionArchived(ctx, b.ID, false); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	all, _ = s.ListDimensions(ctx, true)
+	if !equalIDs(all, c.ID, a.ID, b.ID) {
+		t.Fatalf("restore changed order: %v", ids(all))
+	}
+
+	if err := s.DeleteDimension(ctx, c.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	d, _ := s.CreateDimension(ctx, "D", "", 10)
+	all, _ = s.ListDimensions(ctx, true)
+	if !equalIDs(all, a.ID, b.ID, d.ID) {
+		t.Fatalf("new dimension not appended: %v", ids(all))
+	}
+
+	s.Close()
+	again, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer again.Close()
+	all, _ = again.ListDimensions(ctx, true)
+	if !equalIDs(all, a.ID, b.ID, d.ID) {
+		t.Fatalf("order lost on restart: %v", ids(all))
+	}
+}
+
+func TestReorderDimensionsRejectsMismatch(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.ReorderDimensions(ctx, nil); err != nil {
+		t.Fatalf("empty store should accept empty order: %v", err)
+	}
+	a, _ := s.CreateDimension(ctx, "A", "", 10)
+	b, _ := s.CreateDimension(ctx, "B", "", 10)
+	c, _ := s.CreateDimension(ctx, "C", "", 10)
+	before, _ := s.ListDimensions(ctx, true)
+	beforeStamps := make([]time.Time, len(before))
+	for i, dim := range before {
+		beforeStamps[i] = dim.UpdatedAt
+	}
+
+	for name, order := range map[string][]int64{
+		"empty":      {},
+		"short":      {c.ID, a.ID},
+		"unknown":    {c.ID, a.ID, b.ID, 999},
+		"duplicate":  {c.ID, c.ID, a.ID},
+		"zero value": {c.ID, a.ID, 0},
+	} {
+		if err := s.ReorderDimensions(ctx, order); !errors.Is(err, ErrOrderMismatch) {
+			t.Fatalf("%s order error = %v, want ErrOrderMismatch", name, err)
+		}
+	}
+
+	after, _ := s.ListDimensions(ctx, true)
+	if !equalIDs(after, a.ID, b.ID, c.ID) {
+		t.Fatalf("failed reorder changed positions: %v", ids(after))
+	}
+	for i := range after {
+		if !after[i].UpdatedAt.Equal(beforeStamps[i]) {
+			t.Fatalf("failed reorder changed updated_at at %d", i)
+		}
+	}
+
+	if err := s.ReorderDimensions(ctx, []int64{c.ID, a.ID, b.ID}); err != nil {
+		t.Fatalf("valid reorder: %v", err)
+	}
+	after, _ = s.ListDimensions(ctx, true)
+	if !equalIDs(after, c.ID, a.ID, b.ID) {
+		t.Fatalf("valid reorder not applied: %v", ids(after))
 	}
 }

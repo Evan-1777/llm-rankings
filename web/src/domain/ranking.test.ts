@@ -111,3 +111,32 @@ test("relative bars use the dimension max with a floor of 10", () => {
   assert.equal(barWidth(8, 10), 80);
   assert.equal(barWidth(null, 10), 0);
 });
+test("composite and preview stay stable across display order", () => {
+  const natural = [
+    { id: 1, name: "A", weight: 1 },
+    { id: 2, name: "B", weight: 1 },
+    { id: 3, name: "C", weight: 1 },
+  ];
+  const swapped = [natural[0], natural[2], natural[1]];
+  const alphaScores: Record<string, number> = { "1": 0.1, "2": 0.1, "3": 0.4 };
+  const raw = (order: typeof natural) =>
+    order.reduce((sum, dimension) => sum + (dimension.weight / 3) * (alphaScores[String(dimension.id)] ?? 0), 0);
+  assert.notEqual(raw(natural), raw(swapped));
+
+  const a = composite(natural, alphaScores);
+  const b = composite(swapped, alphaScores);
+  assert.equal(a.score, b.score);
+  assert.equal(a.score, 0.2);
+  assert.deepEqual([natural[0].id, natural[1].id, natural[2].id], [1, 2, 3]);
+  assert.deepEqual([swapped[0].id, swapped[1].id, swapped[2].id], [1, 3, 2]);
+
+  const rows = [
+    row("alpha", 0.2, 1, 1, alphaScores),
+    row("zeta", 0.2, 1, 2, { "1": 0.2, "2": 0.2, "3": 0.2 }),
+  ];
+  const alpha = previewRanking(rows, swapped, "alpha", { 1: 0.1, 2: 0.1, 3: 0.4 });
+  const zeta = previewRanking(rows, swapped, "zeta", { 1: 0.2, 2: 0.2, 3: 0.2 });
+  assert.equal(alpha.score, zeta.score);
+  assert.equal(alpha.rank, 1);
+  assert.equal(zeta.rank, 2);
+});

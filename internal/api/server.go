@@ -47,6 +47,7 @@ func New(st *store.Store, mgr *auth.Manager, logger *slog.Logger, dist fs.FS, tr
 	mux.HandleFunc("GET /api/rankings", s.handleRankings)
 
 	mux.HandleFunc("GET /api/dimensions", s.handleListDimensions)
+	mux.HandleFunc("PUT /api/dimensions/order", s.admin(s.handleReorderDimensions))
 	mux.HandleFunc("POST /api/dimensions", s.admin(s.handleCreateDimension))
 	mux.HandleFunc("PATCH /api/dimensions/{id}", s.admin(s.handleUpdateDimension))
 	mux.HandleFunc("POST /api/dimensions/{id}/archive", s.admin(s.handleArchiveDimension))

@@ -158,3 +158,60 @@ func TestComputeEmpty(t *testing.T) {
 		t.Fatalf("empty input = %+v", result)
 	}
 }
+func TestComputeKeepsScoresAndRanksAcrossDisplayOrder(t *testing.T) {
+	dimensions := []Dimension{
+		{ID: 1, Name: "A", Weight: 1},
+		{ID: 2, Name: "B", Weight: 1},
+		{ID: 3, Name: "C", Weight: 1},
+	}
+	models := []Model{{ID: 1, Slug: "alpha", Name: "Alpha"}, {ID: 2, Slug: "zeta", Name: "Zeta"}}
+	allScores := []Score{
+		{ModelID: 1, DimensionID: 1, Value: 0.1},
+		{ModelID: 1, DimensionID: 2, Value: 0.1},
+		{ModelID: 1, DimensionID: 3, Value: 0.4},
+		{ModelID: 2, DimensionID: 1, Value: 0.2},
+		{ModelID: 2, DimensionID: 2, Value: 0.2},
+		{ModelID: 2, DimensionID: 3, Value: 0.2},
+	}
+	rawAlphaSum := func(order []Dimension) float64 {
+		sum := 0.0
+		for _, dimension := range order {
+			for _, sc := range allScores {
+				if sc.ModelID == 1 && sc.DimensionID == dimension.ID {
+					sum += (float64(dimension.Weight) / 3) * sc.Value
+				}
+			}
+		}
+		return sum
+	}
+	natural := []Dimension{dimensions[0], dimensions[1], dimensions[2]}
+	swapped := []Dimension{dimensions[0], dimensions[2], dimensions[1]}
+	if rawAlphaSum(natural) == rawAlphaSum(swapped) {
+		t.Fatal("fixture must expose order-dependent summation")
+	}
+	snapshot := append([]Dimension(nil), natural...)
+
+	for _, result := range []Result{
+		Compute(Input{Dimensions: natural, Models: models, Scores: allScores}),
+		Compute(Input{Dimensions: swapped, Models: models, Scores: allScores}),
+	} {
+		if len(result.Rows) != 2 {
+			t.Fatalf("rows = %d", len(result.Rows))
+		}
+		alpha, zeta := result.Rows[0], result.Rows[1]
+		if alpha.Slug != "alpha" || zeta.Slug != "zeta" {
+			t.Fatalf("order = %s, %s", alpha.Slug, zeta.Slug)
+		}
+		if alpha.Score == nil || zeta.Score == nil || *alpha.Score != 0.2 || *zeta.Score != 0.2 {
+			t.Fatalf("scores changed: %+v %+v", alpha, zeta)
+		}
+		if alpha.Coverage != 1 || zeta.Coverage != 1 || alpha.Rank != 1 || zeta.Rank != 2 {
+			t.Fatalf("coverage/rank changed: %+v %+v", alpha, zeta)
+		}
+	}
+	for i := range snapshot {
+		if natural[i] != snapshot[i] {
+			t.Fatalf("input dimensions mutated: %+v", natural)
+		}
+	}
+}

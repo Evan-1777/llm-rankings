@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 const icons = {
   plus: <path d="M8 3v10M3 8h10" />,
+  grip: <path d="M5 4.5h6M5 8h6M5 11.5h6" />,
   close: <path d="m4 4 8 8M12 4l-8 8" />,
   edit: <path d="M3 13l.6-2.8 7.8-7.8 2.2 2.2-7.8 7.8L3 13zM9.8 4l2.2 2.2" />,
   note: <path d="M3 2.5h10v11H3zM5.5 5.5h5M5.5 8h5M5.5 10.5h3" />,

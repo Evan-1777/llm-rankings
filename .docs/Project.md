@@ -6,6 +6,7 @@
 
 - **定位**：LLM Rank，一个用于个人记录、评分与比较 LLM 表现的自托管 Web 服务。
 - **阶段**：首版实现完成（2026-10-22）。代码、测试、部署配置与 CI 已落地；生产镜像由 GitHub Actions 构建。
+- **当前增量**：维度手动拖动排序（2026-10-22）；展示顺序独立于评分计算。
 - **首版范围**：单管理员维护模型、维度、全局维度权重与评分；公开只读排行；加权综合分与覆盖率；模型详情、对比、评分工作台；JSON 导出；Docker Compose 与 GHCR 镜像。
 - **非目标**：多用户/注册/OAuth、评论社区、自动抓取 benchmark、AI 自动评分、原生 App、实时协作、国际化、付费、暗色主题、评分历史、JSON 导入。
 
@@ -85,11 +86,11 @@ Dockerfile
   - `GET /api/bootstrap`
   - `POST /api/auth/login`、`POST /api/auth/logout`
   - `GET /api/rankings`
-  - `GET /api/dimensions`；`POST /api/dimensions`；`PATCH /api/dimensions/{id}`；`POST /api/dimensions/{id}/archive|restore`；`DELETE /api/dimensions/{id}`
+  - `GET /api/dimensions`；`POST /api/dimensions`；`PATCH /api/dimensions/{id}`；`PUT /api/dimensions/order`；`POST /api/dimensions/{id}/archive|restore`；`DELETE /api/dimensions/{id}`
   - `GET /api/models`；`POST /api/models`；`GET /api/models/{slug}`；`PATCH /api/models/{slug}`；`DELETE /api/models/{slug}`
   - `PUT /api/models/{slug}/scores/{dimensionId}`；`DELETE /api/models/{slug}/scores/{dimensionId}`
   - `GET /api/export`（管理员）
-- **数据模型**：`dimensions`（名称、描述、0–100 权重、归档时间）、`models`（唯一 slug、名称、厂商、私人备注）、`scores`（模型 + 维度复合主键、非负 REAL、备注、更新时间）。三表外键级联；不插入种子数据。
+- **数据模型**：`dimensions`（名称、描述、0–100 权重、展示位置 `position`、归档时间）、`models`（唯一 slug、名称、厂商、私人备注）、`scores`（模型 + 维度复合主键、非负 REAL、备注、更新时间）。三表外键级联；不插入种子数据；展示位置按原 ID 初始化，新建追加末尾。
 - **排名规则**：只计权重 > 0 的启用维度；综合分按已评分维度的权重归一，不设上限，按两位小数展示；单维度评分保留一位小数；覆盖率 = 已评分权重 / 总权重，显示向下截断到一位小数，低于 80% 标记「暂定」；同分按覆盖率高者、名称、slug 排序；未评分模型始终置底；官方排名不随视图排序改变。
 - **认证与安全**：bcrypt 哈希存环境变量；HMAC 签名 `llmrank_session` HttpOnly Cookie，24 小时；登录失败每 IP 15 分钟 5 次；写请求校验 Origin host 与 Host 一致；安全响应头含 CSP、`X-Frame-Options`、`X-Content-Type-Options`、`Referrer-Policy`；公开接口不返回私人备注。
 - **静态资源**：`assets/` 下带哈希文件使用一年 immutable 缓存；其他文件一天；缺失的 `assets/` 与带扩展名路径返回 404，其余路径回落到 `index.html`；API 未知路径返回 JSON 404。
@@ -99,8 +100,10 @@ Dockerfile
 - **路由**：`/`（排行）、`/models/:slug`（详情）、`/compare?models=...`（对比）、`/workbench`（工作台）、`/settings?tab=dimensions|models|data`（设置）、`/login`（登录）。
 - **信息架构**：排行表头即排序控件；评分只通过共享评分弹窗；模型只通过共享模型表单创建；设置页独立于排行；工作台按覆盖率升序暴露补测优先级；对比最多 4 个模型，移动端改为纵向卡片。
 - **状态**：每页具备加载骨架、错误重试、空状态与成功反馈；无数据时给出下一步入口（先建维度 / 新增模型 / 去评分）。
-- **视觉**：瑞士/编辑式排版，纸白 `#F2EFE6`、墨黑 `#14130F`、信号红 `#B92A20`；0 圆角、无阴影/渐变、1px 分隔线；桌面 12 栏，内容最大 1500px；移动端表格隐藏维度列，保留排名、模型、综合分、覆盖率与操作；功能文字不小于 10px，移动主按钮 44px，行内图标 34px。
+- **交互与可访问性基准**：沿用首版方案的 Apple HIG，包含清晰层级、克制反馈、键盘操作与焦点恢复；视觉执行瑞士平面规范。
+- **视觉**：瑞士/编辑式排版，纸白 `#F2EFE6`、墨黑 `#14130F`、信号红 `#B92A20`；0 圆角、无阴影/渐变、1px 分隔线；桌面 12 栏，内容最大 1500px；移动端表格隐藏维度列，保留排名、模型、综合分、覆盖率与操作；功能文字不小于 10px，移动主按钮 44px，行内图标 34px；维度拖动手柄桌面 52×44px、≤900px 44×48px，对应首列 60/44px。
 - **交互细节**：评分弹窗打开后聚焦首个评分输入；未保存改动拦截站内跳转与 `beforeunload`；关闭后焦点回到触发按钮；评分预览实时更新综合分与排名；评分输入拒绝负数、NaN、Infinity，允许 12.5 与更大有限值。
+- **维度排序**：设置页维度列表的序号区为拖动手柄；拖动或方向键调整顺序，释放后一次性提交含归档项的完整 ID 排列；指针靠近视口上下边缘时持续滚动；保存期间只禁用排序，失败保留已加载顺序，409 自动重载并提示。
 
 ## 约定
 
@@ -125,6 +128,8 @@ Dockerfile
 - 2026-10-22 移动端表格隐藏维度列，保留核心五列；页面级不横向溢出，宽表只在容器内滚动。
 - 2026-10-22 弹窗打开后聚焦首个可编辑评分输入；关闭时恢复触发按钮焦点；未保存改动同时拦截 SPA 路由与浏览器离开。
 - 2026-10-22 部署由 CI 构建单架构 `linux/amd64` 镜像；容器只监听 loopback，TLS 与域名由宿主反向代理负责；数据库挂载命名卷。
+- 2026-10-22 维度展示顺序独立于评分顺序——`position` 只影响 API 与页面展示；评分按维度 ID 稳定累加，重排不改变分数、覆盖率与排名。
+- 2026-10-22 重排整集提交——`PUT /api/dimensions/order` 接收含归档项的完整 ID 排列，单事务校验后原子写入；载荷结构/重复/非正 ID 为 422，合法 ID 集合与当前库不一致为 409。
 
 ## 测试与验收
 
@@ -134,6 +139,9 @@ Dockerfile
 - 2026-10-22：`CGO_ENABLED=0 go build ./cmd/server` 通过。
 - 2026-10-22：浏览器手工验收覆盖 1440 / 1024 / 768 / 390；排行、详情、对比、工作台、设置、登录、评分弹窗与空/错/加载状态可用；页面级无横向溢出；移动端表格与弹窗可用。
 - 2026-10-22：GitHub Actions run `39633816016` 的 test 与 image job 均通过，镜像 `ghcr.io/evan-1777/llm-rankings:latest` 已推送；匿名拉取 manifest 返回 200。
+- 2026-10-22：`go test ./...`、`go vet ./...` 通过；新增展示顺序迁移、稳定计分与重排接口回归。
+- 2026-10-22：`pnpm --dir web test` 14/14 通过；`typecheck`、`build` 通过；新增排序纯函数与稳定计分测试。
+- 2026-10-22：浏览器验收覆盖 1440/900/760/390、16 项列表持续边缘滚动、鼠标拖动、键盘排序、触摸合成事件、同位置/取消/边界不提交、保存失败、409 自动重载、重载失败重试、刷新持久化、归档隐藏槽位、零/单项状态；排行、详情、导出与评分弹窗顺序一致。
 - 未在本地验证：Docker 镜像构建与 Compose 实际启动（本机无 Docker）；Compose 仅完成 YAML 解析与变量检查。
 
 ## 外部集成
@@ -149,6 +157,7 @@ Dockerfile
 - 无评分历史、审计日志、JSON 导入、暗色主题、国际化。
 - 评分与模型删除为硬删除；维度归档可恢复，永久删除会级联评分。
 - 浏览器验收为手工执行，无端到端自动化；Go/前端纯函数与 HTTP 集成测试覆盖主要规则。
+- 真实触屏手势需人工验收；自动化仅验证合成 `pointerType=touch` 的生命周期与清理。
 - 本机无 Docker，镜像与 Compose 的实际启动需在 CI/VPS 验证。
 
 ## 术语

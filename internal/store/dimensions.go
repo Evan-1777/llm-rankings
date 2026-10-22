@@ -13,18 +13,19 @@ type Dimension struct {
 	Name        string
 	Description string
 	Weight      int
+	Position    int
 	ArchivedAt  *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
-// ListDimensions returns dimensions ordered by id, optionally including archived ones.
+// ListDimensions returns dimensions in display order, optionally including archived ones.
 func (s *Store) ListDimensions(ctx context.Context, includeArchived bool) ([]Dimension, error) {
-	query := `SELECT id, name, description, weight, archived_at, created_at, updated_at FROM dimensions`
+	query := `SELECT id, name, description, weight, position, archived_at, created_at, updated_at FROM dimensions`
 	if !includeArchived {
 		query += ` WHERE archived_at IS NULL`
 	}
-	query += ` ORDER BY id`
+	query += ` ORDER BY position, id`
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -46,7 +47,7 @@ func scanDimension(row rowScanner) (Dimension, error) {
 	var d Dimension
 	var archived sql.NullString
 	var created, updated string
-	if err := row.Scan(&d.ID, &d.Name, &d.Description, &d.Weight, &archived, &created, &updated); err != nil {
+	if err := row.Scan(&d.ID, &d.Name, &d.Description, &d.Weight, &d.Position, &archived, &created, &updated); err != nil {
 		return d, err
 	}
 	var err error
@@ -64,7 +65,7 @@ func scanDimension(row rowScanner) (Dimension, error) {
 
 // DimensionByID returns one dimension.
 func (s *Store) DimensionByID(ctx context.Context, id int64) (Dimension, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, name, description, weight, archived_at, created_at, updated_at FROM dimensions WHERE id = ?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT id, name, description, weight, position, archived_at, created_at, updated_at FROM dimensions WHERE id = ?`, id)
 	d, err := scanDimension(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Dimension{}, ErrNotFound
@@ -75,7 +76,8 @@ func (s *Store) DimensionByID(ctx context.Context, id int64) (Dimension, error) 
 // CreateDimension inserts a dimension.
 func (s *Store) CreateDimension(ctx context.Context, name, description string, weight int) (Dimension, error) {
 	now := nowStamp()
-	res, err := s.db.ExecContext(ctx, `INSERT INTO dimensions (name, description, weight, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+	res, err := s.db.ExecContext(ctx, `INSERT INTO dimensions (name, description, weight, position, created_at, updated_at)
+		VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM dimensions), ?, ?)`,
 		name, description, weight, now, now)
 	if err != nil {
 		if isUnique(err) {
@@ -145,4 +147,50 @@ func (s *Store) DeleteDimension(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ReorderDimensions replaces the display order with a complete permutation of ids.
+func (s *Store) ReorderDimensions(ctx context.Context, ids []int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM dimensions`)
+	if err != nil {
+		return err
+	}
+	current := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		current[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if len(ids) != len(current) {
+		return ErrOrderMismatch
+	}
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if !current[id] || seen[id] {
+			return ErrOrderMismatch
+		}
+		seen[id] = true
+	}
+
+	now := nowStamp()
+	for index, id := range ids {
+		if _, err := tx.ExecContext(ctx, `UPDATE dimensions SET position = ?, updated_at = ? WHERE id = ?`, index+1, now, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

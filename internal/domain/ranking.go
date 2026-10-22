@@ -78,14 +78,18 @@ func Compute(in Input) Result {
 		scoresByModel[sc.ModelID][sc.DimensionID] = sc.Value
 	}
 
+	// Accumulate in stable id order so the display order never changes the
+	// floating-point result.
+	ordered := make([]Dimension, len(in.Dimensions))
+	copy(ordered, in.Dimensions)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
+
 	rows := make([]Row, 0, len(in.Models))
 	for _, m := range in.Models {
 		row := Row{Model: m, DimensionScores: map[int64]float64{}}
 		scoredWeight := 0
 		weightedSum := 0.0
-		// Follow the dimension order instead of map order so floating-point
-		// summation is deterministic across requests.
-		for _, dimension := range in.Dimensions {
+		for _, dimension := range ordered {
 			weight, weighted := weights[dimension.ID]
 			if !weighted || weight == 0 {
 				continue

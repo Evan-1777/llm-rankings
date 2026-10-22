@@ -88,6 +88,8 @@ export const api = {
   setDimensionArchived: (id: number, archived: boolean) =>
     request<Dimension>(`/api/dimensions/${id}/${archived ? "archive" : "restore"}`, { method: "POST" }),
   deleteDimension: (id: number) => request<void>(`/api/dimensions/${id}`, { method: "DELETE" }),
+  reorderDimensions: (ids: number[]) =>
+    request<void>("/api/dimensions/order", { method: "PUT", body: JSON.stringify({ ids }) }),
 
   models: (signal?: AbortSignal) => request<{ models: ModelSummary[] }>("/api/models", { signal }),
   model: (slug: string, signal?: AbortSignal) =>

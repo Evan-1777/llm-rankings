@@ -50,8 +50,11 @@ export function formatDimension(value: number | null | undefined): string {
 }
 
 export function composite(dimensions: Dimension[], scores: Record<string, number>): Composite {
+  // Accumulate in stable id order so the display order never changes the
+  // floating-point result.
+  const ordered = [...dimensions].sort((a, b) => a.id - b.id);
   let totalWeight = 0;
-  for (const dimension of dimensions) {
+  for (const dimension of ordered) {
     if (dimension.weight > 0) totalWeight += dimension.weight;
   }
   if (totalWeight === 0) {
@@ -60,7 +63,7 @@ export function composite(dimensions: Dimension[], scores: Record<string, number
   let scoredWeight = 0;
   let weighted = 0;
   let scoredCount = 0;
-  for (const dimension of dimensions) {
+  for (const dimension of ordered) {
     if (dimension.weight <= 0) continue;
     const value = scores[String(dimension.id)];
     if (value == null || !Number.isFinite(value) || value < 0) continue;
