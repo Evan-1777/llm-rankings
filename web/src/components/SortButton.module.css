@@ -1,0 +1,60 @@
+.button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  color: var(--ink-3);
+  transition: color 140ms var(--ease);
+}
+
+.button:hover {
+  color: var(--ink);
+}
+
+.right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.wrap {
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.active {
+  color: var(--ink);
+}
+
+.active svg {
+  color: var(--signal);
+}
+
+.weight {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+@media (max-width: 760px) {
+  .label {
+    font-size: 10px;
+  }
+}

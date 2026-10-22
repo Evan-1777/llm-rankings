@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import ui from "./ui.module.css";
 
 type Variant = "primary" | "quiet" | "danger";
@@ -6,15 +6,16 @@ type Variant = "primary" | "quiet" | "danger";
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   compact?: boolean;
+  ref?: Ref<HTMLButtonElement>;
   children: ReactNode;
 }
 
-export function Button({ variant = "quiet", compact = false, className, type = "button", children, ...rest }: ButtonProps) {
+export function Button({ variant = "quiet", compact = false, className, type = "button", ref, children, ...rest }: ButtonProps) {
   const classes = [ui.btn, variant === "primary" ? ui.primary : variant === "danger" ? ui.danger : "", compact ? ui.compact : "", className]
     .filter(Boolean)
     .join(" ");
   return (
-    <button type={type} className={classes} {...rest}>
+    <button ref={ref} type={type} className={classes} {...rest}>
       {children}
     </button>
   );

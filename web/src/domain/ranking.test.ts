@@ -10,6 +10,7 @@ import {
   formatScore,
   previewRanking,
   sortRows,
+  sortWorkbenchRows,
   truncatePercent,
   type RankRow,
 } from "./ranking.ts";
@@ -63,6 +64,59 @@ test("unscored rows stay last in both directions", () => {
   ];
   assert.deepEqual(sortRows(rows, "coverage", "asc").map((r) => r.slug), ["high", "low", "unscored"]);
   assert.deepEqual(sortRows(rows, "score", "desc").map((r) => r.slug), ["high", "low", "unscored"]);
+});
+
+test("rank sorting starts from first place and keeps unscored rows last", () => {
+  const rows = [
+    row("unscored", null, 0, null, {}),
+    row("second", 8, 1, 2, { "1": 8 }),
+    row("first", 9, 1, 1, { "1": 9 }),
+  ];
+  assert.deepEqual(sortRows(rows, "rank", "asc").map((r) => r.slug), ["first", "second", "unscored"]);
+  assert.deepEqual(sortRows(rows, "rank", "desc").map((r) => r.slug), ["second", "first", "unscored"]);
+});
+
+test("workbench coverage sort keeps unscored rows at zero", () => {
+  const rows = [
+    row("scored-full", 9, 1, 1, { "1": 9 }),
+    row("unscored", null, 0, null, {}),
+    row("scored-partial", 8, 0.5, 2, { "1": 8 }),
+  ];
+  assert.deepEqual(
+    sortWorkbenchRows(rows, "coverage", "asc").map((r) => r.slug),
+    ["unscored", "scored-partial", "scored-full"],
+  );
+  assert.deepEqual(
+    sortWorkbenchRows(rows, "coverage", "desc").map((r) => r.slug),
+    ["scored-full", "scored-partial", "unscored"],
+  );
+});
+
+test("workbench model sort includes unscored rows by name", () => {
+  const rows = [
+    row("bravo", 8, 1, 2, { "1": 8 }),
+    row("alpha", null, 0, null, {}),
+  ];
+  assert.deepEqual(sortWorkbenchRows(rows, "model", "asc").map((r) => r.slug), ["alpha", "bravo"]);
+  assert.deepEqual(sortWorkbenchRows(rows, "model", "desc").map((r) => r.slug), ["bravo", "alpha"]);
+});
+
+test("workbench value sorts keep unscored and missing rows last", () => {
+  const rows = [
+    row("unscored", null, 0, null, {}),
+    row("missing", 8, 1, 2, {}),
+    row("scored", 7, 1, 3, { "1": 7 }),
+  ];
+  assert.deepEqual(sortWorkbenchRows(rows, "dim-1", "desc").map((r) => r.slug), ["scored", "missing", "unscored"]);
+  assert.deepEqual(sortWorkbenchRows(rows, "score", "desc").map((r) => r.slug), ["missing", "scored", "unscored"]);
+});
+
+test("workbench coverage ties fall back to official rank", () => {
+  const rows = [
+    row("b", 8, 0.5, 2, { "1": 8 }),
+    row("a", 9, 0.5, 1, { "1": 9 }),
+  ];
+  assert.deepEqual(sortWorkbenchRows(rows, "coverage", "asc").map((r) => r.slug), ["a", "b"]);
 });
 
 test("dimension sorting keeps missing values last and official rank unchanged", () => {

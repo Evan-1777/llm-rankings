@@ -478,6 +478,10 @@
   color: var(--ink-2);
 }
 
+.coverageCount {
+  color: var(--ink-3);
+}
+
 .coverageTrack {
   display: block;
   width: 56px;

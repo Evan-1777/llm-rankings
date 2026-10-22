@@ -3,6 +3,7 @@ import { useBlocker } from "react-router-dom";
 import { api, errorMessage } from "../api/client";
 import type { ModelDetail, Rankings, RankingModel } from "../api/types";
 import { formatPercent, formatScore, previewRanking } from "../domain/ranking";
+import { parseScoreInput } from "../domain/scoreInput";
 import { rankLabel } from "../lib/format";
 import { Button, IconButton } from "./Button";
 import { useConfirm } from "./Confirm";
@@ -21,20 +22,6 @@ interface DraftRow {
 interface OriginalRow {
   value: number | null;
   note: string;
-}
-
-interface ParsedValue {
-  value: number | null;
-  error: string | null;
-}
-
-function parseValue(raw: string): ParsedValue {
-  if (raw.trim() === "") return { value: null, error: null };
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return { value: null, error: "请输入不小于 0 的有限数" };
-  }
-  return { value: Math.round(numeric * 10) / 10, error: null };
 }
 
 const EMPTY_DIMENSIONS: ModelDetail["dimensions"] = [];
@@ -118,7 +105,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     for (const dimension of dimensions) {
       const row = draft[dimension.id];
       if (!row) continue;
-      values[dimension.id] = parseValue(row.value).value;
+      values[dimension.id] = parseScoreInput(row.value).value;
     }
     return values;
   }, [dimensions, draft]);
@@ -128,7 +115,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     for (const dimension of dimensions) {
       const row = draft[dimension.id];
       if (!row) continue;
-      const parsed = parseValue(row.value);
+      const parsed = parseScoreInput(row.value);
       if (parsed.error) next[dimension.id] = parsed.error;
       else if (row.note.length > 500) next[dimension.id] = "备注不能超过 500 个字符";
     }
@@ -140,7 +127,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
       const row = draft[dimension.id];
       const base = original[dimension.id];
       if (!row || !base) return false;
-      return parseValue(row.value).value !== base.value || row.note !== base.note;
+      return parseScoreInput(row.value).value !== base.value || row.note !== base.note;
     });
   }, [dimensions, draft, original]);
 
@@ -200,7 +187,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
         const row = draft[dimension.id];
         const base = original[dimension.id];
         if (!row || !base) continue;
-        const parsed = parseValue(row.value);
+        const parsed = parseScoreInput(row.value);
         if (parsed.value == null) {
           if (base.value != null) {
             await api.deleteScore(model.slug, dimension.id);
@@ -294,7 +281,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
                       aria-invalid={Boolean(error)}
                       onChange={(event) => updateRow(dimension.id, { value: event.target.value })}
                       onBlur={(event) => {
-                        const parsed = parseValue(event.target.value);
+                        const parsed = parseScoreInput(event.target.value);
                         if (parsed.error == null && parsed.value != null) {
                           updateRow(dimension.id, { value: String(parsed.value) });
                         }

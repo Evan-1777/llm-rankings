@@ -100,6 +100,10 @@ export interface ModelPatch {
   notes?: string;
 }
 
+export interface DisplaySettings {
+  scorePercentageMode: boolean;
+}
+
 export interface ScoreResponse {
   modelSlug: string;
   dimensionId: number;

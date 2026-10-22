@@ -49,7 +49,14 @@ export function Settings() {
     return { dimensions: dimensions.dimensions, models: models.models };
   }, []);
   const session = useSession();
-  const { dimensionScoreEmphasis, setDimensionScoreEmphasis, scorePercentageMode, setScorePercentageMode } = useDisplayPreferences();
+  const {
+    dimensionScoreEmphasis,
+    setDimensionScoreEmphasis,
+    scorePercentageMode,
+    setScorePercentageMode,
+    loading: displayLoading,
+    saving: displaySaving,
+  } = useDisplayPreferences();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -515,19 +522,20 @@ export function Settings() {
         <div className={styles.panelHead}>
           <div className={styles.panelIntro}>
             <p className={ui.sectionLabel}>显示</p>
-            <span className={ui.sectionMeta}>当前浏览器</span>
+            <span className={ui.sectionMeta}>显示偏好</span>
           </div>
         </div>
         <label className={styles.preference}>
           <span className={styles.preferenceCopy}>
             <span className={styles.preferenceLabel}>百分比模式</span>
-            <span className={styles.preferenceHint}>1% = 最高分 · 100% = 最低分</span>
+            <span className={styles.preferenceHint}>所有设备 · 1% = 最高分 · 100% = 最低分</span>
           </span>
           <span className={ui.checkboxRow}>
             <input
               type="checkbox"
               checked={scorePercentageMode}
-              onChange={(event) => setScorePercentageMode(event.target.checked)}
+              disabled={displayLoading || displaySaving}
+              onChange={(event) => void setScorePercentageMode(event.target.checked)}
             />
             {scorePercentageMode ? "开启" : "关闭"}
           </span>
@@ -536,6 +544,7 @@ export function Settings() {
           <span className={styles.preferenceCopy}>
             <span className={styles.preferenceLabel}>维度得分强调</span>
             <span className={styles.preferenceHint}>
+              当前浏览器
               <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />
               低分红 <span aria-hidden="true">→</span>
               <span className={`${ui.legendSwatch} ${ui.legendHigh}`} aria-hidden="true" />

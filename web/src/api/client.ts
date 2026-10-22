@@ -2,6 +2,7 @@ import type {
   Bootstrap,
   Dimension,
   DimensionInput,
+  DisplaySettings,
   ErrorEnvelope,
   ModelDetail,
   ModelInput,
@@ -76,6 +77,10 @@ export const api = {
 
   rankings: (signal?: AbortSignal) => request<Rankings>("/api/rankings", { signal }),
 
+  displaySettings: (signal?: AbortSignal) => request<DisplaySettings>("/api/display-settings", { signal }),
+  updateDisplaySettings: (input: DisplaySettings) =>
+    request<DisplaySettings>("/api/display-settings", { method: "PUT", body: JSON.stringify(input) }),
+
   dimensions: (includeArchived: boolean, signal?: AbortSignal) =>
     request<{ dimensions: Dimension[] }>(
       `/api/dimensions${includeArchived ? "?includeArchived=1" : ""}`,
@@ -104,10 +109,10 @@ export const api = {
   deleteModel: (slug: string) =>
     request<void>(`/api/models/${encodeURIComponent(slug)}`, { method: "DELETE" }),
 
-  putScore: (slug: string, dimensionId: number, value: number, note: string) =>
+  putScore: (slug: string, dimensionId: number, value: number, note?: string) =>
     request<ScoreResponse>(`/api/models/${encodeURIComponent(slug)}/scores/${dimensionId}`, {
       method: "PUT",
-      body: JSON.stringify({ value, note }),
+      body: JSON.stringify(note === undefined ? { value } : { value, note }),
     }),
   deleteScore: (slug: string, dimensionId: number) =>
     request<void>(`/api/models/${encodeURIComponent(slug)}/scores/${dimensionId}`, {

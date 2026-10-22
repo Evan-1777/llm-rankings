@@ -95,7 +95,8 @@ function dimensionIdFromKey(key: string): number | null {
 
 function rowValue(row: RankRow, key: string): number | null {
   if (key === "score") return row.score;
-  if (key === "coverage") return row.score == null ? null : row.coverage;
+  if (key === "rank") return row.rank;
+  if (key === "coverage") return row.coverage;
   const id = dimensionIdFromKey(key);
   if (id == null) return null;
   const value = row.scores[String(id)];
@@ -112,14 +113,21 @@ function compareNames(a: RankRow, b: RankRow): number {
   return a.slug < b.slug ? -1 : 1;
 }
 
+export interface SortOptions {
+  /** Lets unscored rows participate for the model and coverage keys instead of forcing them last. */
+  keepUnscored?: boolean;
+}
+
 /**
  * Sorts a copy for the view layer. Official rank is never recomputed and rows
- * without a composite score stay last regardless of direction.
+ * without a composite score stay last regardless of direction unless the key
+ * and options explicitly let them participate.
  */
-export function sortRows(rows: RankRow[], key: string, dir: SortDir): RankRow[] {
+export function sortRows(rows: RankRow[], key: string, dir: SortDir, options: SortOptions = {}): RankRow[] {
+  const keepUnscored = options.keepUnscored === true && (key === "model" || key === "coverage");
   const sorted = [...rows];
   sorted.sort((a, b) => {
-    if ((a.score == null) !== (b.score == null)) return a.score == null ? 1 : -1;
+    if (!keepUnscored && (a.score == null) !== (b.score == null)) return a.score == null ? 1 : -1;
 
     if (key === "model") {
       const names = compareNames(a, b);
@@ -136,6 +144,11 @@ export function sortRows(rows: RankRow[], key: string, dir: SortDir): RankRow[] 
     return compareOfficial(a, b);
   });
   return sorted;
+}
+
+/** Workbench view sort: models and coverage include unscored rows; value keys keep them last. */
+export function sortWorkbenchRows(rows: RankRow[], key: string, dir: SortDir): RankRow[] {
+  return sortRows(rows, key, dir, { keepUnscored: key === "model" || key === "coverage" });
 }
 
 function compareOfficial(a: RankRow, b: RankRow): number {

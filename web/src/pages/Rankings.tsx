@@ -9,6 +9,7 @@ import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
 import { PageHeading } from "../components/PageHeading";
 import { ScoreDialog } from "../components/ScoreDialog";
+import { SortButton } from "../components/SortButton";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
@@ -69,13 +70,7 @@ function SortHeader({
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
       className={`${styles.th} ${right ? styles.alignRight : ""} ${className ?? ""}`}
     >
-      <button type="button" className={styles.sortButton} onClick={onClick}>
-        <span className={`${styles.headLabel} ${active ? styles.headActive : ""}`}>
-          {label}
-          {active ? <Icon name={dir === "asc" ? "arrowUp" : "arrowDown"} size={11} /> : null}
-        </span>
-        {weight != null ? <span className={styles.weight}>{weight}</span> : null}
-      </button>
+      <SortButton label={label} weight={weight} active={active} dir={dir} align={right ? "right" : "left"} onClick={onClick} />
     </th>
   );
 }
