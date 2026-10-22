@@ -63,6 +63,16 @@ export function formatGapPercentile(value: number | null | undefined, range: Sco
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 
+/** Position inside the range where the lowest score is 0% and the highest is 100%. */
+export function scorePercentile(value: number | null | undefined, range: ScoreRange | null | undefined): number | null {
+  if (range == null || value == null || !Number.isFinite(value) || value < 0) return null;
+  const span = range.max - range.min;
+  if (!(span > 0)) return null;
+  const position = ((value - range.min) / span) * 100;
+  if (!Number.isFinite(position)) return null;
+  return Math.min(100, Math.max(0, position));
+}
+
 /** Tone of a score inside its range: warm red when low, cool blue when high, nothing near the middle. */
 export function scoreEmphasisTone(value: number | null | undefined, range: ScoreRange | null | undefined): ScoreTone | null {
   if (range == null || value == null || !Number.isFinite(value) || value < 0) return null;

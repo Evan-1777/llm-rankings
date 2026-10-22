@@ -5,6 +5,7 @@ import {
   formatGapPercentile,
   gapPercentile,
   scoreEmphasisTone,
+  scorePercentile,
   scoreRange,
   type ScoreRow,
 } from "./scoreEmphasis.ts";
@@ -51,6 +52,20 @@ test("gap percentile maps the best score to 1 and the worst to 100", () => {
   close(gapPercentile(12.5, { min: 0, max: 25 }), 50.5);
   assert.equal(formatGapPercentile(10, range), "1%");
   assert.equal(formatGapPercentile(0, range), "100%");
+});
+
+test("score percentile puts the weakest at 0 and the strongest at 100", () => {
+  const range = { min: 0, max: 10 };
+  assert.equal(scorePercentile(0, range), 0);
+  assert.equal(scorePercentile(10, range), 100);
+  close(scorePercentile(5, range), 50);
+  close(scorePercentile(2, { min: 2, max: 8 }), 0);
+  close(scorePercentile(4, { min: 2, max: 8 }), 100 / 3);
+  assert.equal(scorePercentile(null, range), null);
+  assert.equal(scorePercentile(-1, range), null);
+  assert.equal(scorePercentile(Number.NaN, range), null);
+  assert.equal(scorePercentile(5, null), null);
+  assert.equal(scorePercentile(5, { min: 5, max: 5 }), null);
 });
 
 test("a 1-point gap and a 3-point gap produce different percentages", () => {

@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
 import { barWidth, dimensionMax, dimensionRanks, formatPercent, formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatGapPercentile, gapPercentile, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatGapPercentile, scorePercentile, scoreRange } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -144,7 +144,7 @@ export function ModelDetail() {
         <span className={`${styles.sectionNotes} ${styles.hideMobile}`}>
           <span className={ui.sectionMeta}>
             {scorePercentageMode
-              ? "分差百分比 / 1% = 最高分，100% = 最低分 / 相对条同比例"
+              ? "分差百分比 / 1% = 最高分，100% = 最低分 / 相对条越强越长"
               : "相对条按最高分归一 / 名次按同维度已评分模型"}
           </span>
           {dimensionScoreEmphasis ? (
@@ -191,7 +191,7 @@ export function ModelDetail() {
             <tbody>
               {detail.dimensions.map((dimension) => {
                 const max = dimensionMax(rankings.models, dimension.id);
-                const gap = scorePercentageMode ? gapPercentile(dimension.value, scoreRanges.get(dimension.id)) : null;
+                const percent = scorePercentageMode ? scorePercentile(dimension.value, scoreRanges.get(dimension.id)) : null;
                 const ranked = ranksByDimension.get(dimension.id);
                 const rank = ranked?.get(detail.slug) ?? null;
                 return (
@@ -215,7 +215,7 @@ export function ModelDetail() {
                       <span className={styles.barTrack} aria-hidden="true">
                         <span
                           className={styles.barFill}
-                          style={{ width: `${scorePercentageMode ? (gap ?? 0) : barWidth(dimension.value, max)}%` }}
+                          style={{ width: `${scorePercentageMode ? (percent ?? 0) : barWidth(dimension.value, max)}%` }}
                         />
                       </span>
                     </td>
