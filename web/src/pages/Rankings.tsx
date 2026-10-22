@@ -129,7 +129,6 @@ export function Rankings() {
   };
 
   const openSettings = () => navigate("/settings?tab=dimensions");
-  const openLogin = () => navigate("/login?next=/");
 
   let content: ReactNode;
   if ((loading && !data) || session.loading) {
@@ -147,11 +146,7 @@ export function Rankings() {
             <Button variant="primary" onClick={openSettings}>
               前往维度设置
             </Button>
-          ) : (
-            <Button variant="primary" onClick={openLogin}>
-              登录
-            </Button>
-          )}
+          ) : null}
         </EmptyState>
       );
     } else if (data.totalWeight === 0) {
@@ -167,11 +162,7 @@ export function Rankings() {
               </Button>
               <Button onClick={() => setModelOpen(true)}>新增模型</Button>
             </>
-          ) : (
-            <Button variant="primary" onClick={openLogin}>
-              登录
-            </Button>
-          )}
+          ) : null}
         </EmptyState>
       );
     } else if (models.length === 0) {
@@ -184,11 +175,7 @@ export function Rankings() {
             <Button variant="primary" onClick={() => setModelOpen(true)}>
               新增模型
             </Button>
-          ) : (
-            <Button variant="primary" onClick={openLogin}>
-              登录
-            </Button>
-          )}
+          ) : null}
         </EmptyState>
       );
     } else {

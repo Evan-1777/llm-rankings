@@ -57,11 +57,7 @@ export function Header() {
                 <Icon name="logout" size={13} />
               </button>
             </>
-          ) : (
-            <Link to="/login" className={styles.login}>
-              登录
-            </Link>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

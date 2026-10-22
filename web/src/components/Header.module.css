@@ -113,16 +113,6 @@
   border-bottom-color: var(--ink);
 }
 
-.login {
-  padding-bottom: 2px;
-  border-bottom: 1px solid var(--ink);
-  color: var(--ink);
-}
-
-.login:hover {
-  text-decoration: none;
-}
-
 @media (max-width: 900px) {
   .inner {
     gap: 24px;
