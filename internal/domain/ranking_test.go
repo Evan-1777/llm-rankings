@@ -231,3 +231,52 @@ func TestComputeKeepsScoresAndRanksAcrossDisplayOrder(t *testing.T) {
 		}
 	}
 }
+func TestComputeHiddenModelsStayLastAndUnranked(t *testing.T) {
+	visibleOnly := Compute(Input{
+		Dimensions: dims(100),
+		Models:     []Model{{ID: 1, Slug: "a", Name: "Alpha"}, {ID: 2, Slug: "b", Name: "Beta"}},
+		Scores:     []Score{{ModelID: 1, DimensionID: 1, Value: 9}, {ModelID: 2, DimensionID: 1, Value: 8}},
+	})
+	withHidden := Compute(Input{
+		Dimensions: dims(100),
+		Models: []Model{
+			{ID: 1, Slug: "a", Name: "Alpha"},
+			{ID: 2, Slug: "b", Name: "Beta"},
+			{ID: 3, Slug: "h", Name: "Hidden", Hidden: true},
+		},
+		Scores: []Score{
+			{ModelID: 1, DimensionID: 1, Value: 9},
+			{ModelID: 2, DimensionID: 1, Value: 8},
+			{ModelID: 3, DimensionID: 1, Value: 10},
+		},
+	})
+	if len(withHidden.Rows) != 3 || withHidden.Rows[2].Slug != "h" {
+		t.Fatalf("hidden row must sort last: %+v", withHidden.Rows)
+	}
+	if withHidden.Rows[0].Rank != 1 || withHidden.Rows[1].Rank != 2 || withHidden.Rows[2].Rank != 0 {
+		t.Fatalf("hidden row took a rank: %+v", withHidden.Rows)
+	}
+	for i := 0; i < 2; i++ {
+		if visibleOnly.Rows[i].Rank != withHidden.Rows[i].Rank || *visibleOnly.Rows[i].Score != *withHidden.Rows[i].Score {
+			t.Fatalf("visible rows changed when hiding a model: %+v vs %+v", visibleOnly.Rows[i], withHidden.Rows[i])
+		}
+	}
+	if withHidden.Rows[2].Score == nil {
+		t.Fatal("hidden model must still be scored")
+	}
+}
+
+func TestComputeZeroWeightDimensionStaysVisibleOnly(t *testing.T) {
+	result := Compute(Input{
+		Dimensions: []Dimension{{ID: 1, Name: "Quality", Weight: 100}, {ID: 2, Name: "Idle", Weight: 0}},
+		Models:     []Model{{ID: 1, Slug: "a", Name: "A"}},
+		Scores:     []Score{{ModelID: 1, DimensionID: 1, Value: 9}, {ModelID: 1, DimensionID: 2, Value: 10}},
+	})
+	row := result.Rows[0]
+	if row.Score == nil || *row.Score != 9 || row.Coverage != 1 || row.Rank != 1 || result.TotalWeight != 100 {
+		t.Fatalf("zero-weight dimension changed scoring: %+v", row)
+	}
+	if row.DimensionScores[2] != 10 {
+		t.Fatalf("zero-weight value missing from the display snapshot: %+v", row.DimensionScores)
+	}
+}

@@ -77,7 +77,7 @@ function SortHeader({
 
 export function Rankings() {
   useDocumentTitle("综合排行");
-  const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(signal), []);
+  const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
   const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
   const toast = useToast();
@@ -134,11 +134,22 @@ export function Rankings() {
   } else if (error) {
     content = <ErrorState error={error} onRetry={reload} />;
   } else if (data) {
+    const activeSessionDimensions = session.dimensions.filter((dimension) => !dimension.archivedAt);
+    const numericSessionDimensions = activeSessionDimensions.filter((dimension) => !dimension.textMode);
     if (dimensions.length === 0) {
+      const onlyText = activeSessionDimensions.length > 0 && numericSessionDimensions.length === 0;
       content = (
         <EmptyState
-          title="尚未创建维度"
-          text={session.authenticated ? "排行需要维度与权重，先在设置中创建第一个维度。" : "管理员尚未配置维度与权重。"}
+          title={onlyText ? "暂无参与排行的维度" : "尚未创建维度"}
+          text={
+            onlyText
+              ? session.authenticated
+                ? "文字维度不参与排行；启用数值维度并设置权重后会在这里展开。"
+                : "管理员尚未启用参与排行的数值维度。"
+              : session.authenticated
+                ? "排行需要维度与权重，先在设置中创建第一个维度。"
+                : "管理员尚未配置维度与权重。"
+          }
         >
           {session.authenticated ? (
             <Button variant="primary" onClick={openSettings}>
@@ -150,8 +161,8 @@ export function Rankings() {
     } else if (data.totalWeight === 0) {
       content = (
         <EmptyState
-          title="尚未设置权重"
-          text={session.authenticated ? "所有启用维度的权重均为 0，设置权重后开始计算排行。" : "管理员尚未设置维度权重。"}
+          title="维度均未纳入评分"
+          text={session.authenticated ? "所有启用维度的权重均为 0，设置权重后开始计算排行。" : "管理员尚未让任何维度参与评分。"}
         >
           {session.authenticated ? (
             <>

@@ -123,6 +123,14 @@ tbody tr:last-child .td {
   background: var(--surface);
 }
 
+.hiddenRow .modelName,
+.hiddenRow .vendor,
+.hiddenRow .dimValue,
+.hiddenRow .scoreValue,
+.hiddenRow .rankValue {
+  color: var(--ink-3);
+}
+
 .modelCell {
   position: sticky;
   left: 0;

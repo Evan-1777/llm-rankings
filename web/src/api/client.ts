@@ -75,7 +75,8 @@ export const api = {
     }),
   logout: () => request<{ authenticated: boolean }>("/api/auth/logout", { method: "POST" }),
 
-  rankings: (signal?: AbortSignal) => request<Rankings>("/api/rankings", { signal }),
+  rankings: (includeHidden: boolean, signal?: AbortSignal) =>
+    request<Rankings>(`/api/rankings${includeHidden ? "?includeHidden=1" : ""}`, { signal }),
 
   displaySettings: (signal?: AbortSignal) => request<DisplaySettings>("/api/display-settings", { signal }),
   updateDisplaySettings: (input: DisplaySettings) =>
@@ -96,7 +97,11 @@ export const api = {
   reorderDimensions: (ids: number[]) =>
     request<void>("/api/dimensions/order", { method: "PUT", body: JSON.stringify({ ids }) }),
 
-  models: (signal?: AbortSignal) => request<{ models: ModelSummary[] }>("/api/models", { signal }),
+  models: (includeArchived: boolean, signal?: AbortSignal) =>
+    request<{ models: ModelSummary[] }>(
+      `/api/models${includeArchived ? "?includeArchived=1" : ""}`,
+      { signal },
+    ),
   model: (slug: string, signal?: AbortSignal) =>
     request<ModelDetail>(`/api/models/${encodeURIComponent(slug)}`, { signal }),
   createModel: (input: ModelInput) =>
@@ -108,6 +113,21 @@ export const api = {
     }),
   deleteModel: (slug: string) =>
     request<void>(`/api/models/${encodeURIComponent(slug)}`, { method: "DELETE" }),
+  setModelHidden: (slug: string, hidden: boolean) =>
+    request<{ slug: string }>(`/api/models/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ hidden }),
+    }),
+  setModelArchived: (slug: string, archived: boolean) =>
+    request<{ slug: string }>(
+      `/api/models/${encodeURIComponent(slug)}/${archived ? "archive" : "restore"}`,
+      { method: "POST" },
+    ),
+  putModelText: (slug: string, dimensionId: number, text: string) =>
+    request<void>(`/api/models/${encodeURIComponent(slug)}/texts/${dimensionId}`, {
+      method: "PUT",
+      body: JSON.stringify({ text }),
+    }),
 
   putScore: (slug: string, dimensionId: number, value: number, note?: string) =>
     request<ScoreResponse>(`/api/models/${encodeURIComponent(slug)}/scores/${dimensionId}`, {

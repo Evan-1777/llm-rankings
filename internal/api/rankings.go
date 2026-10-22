@@ -21,7 +21,7 @@ func (s *Server) loadRanking(ctx context.Context) (rankingSnapshot, error) {
 	if err != nil {
 		return rankingSnapshot{}, err
 	}
-	models, err := s.store.ListModels(ctx)
+	models, err := s.store.ListModels(ctx, false)
 	if err != nil {
 		return rankingSnapshot{}, err
 	}
@@ -35,7 +35,7 @@ func (s *Server) loadRanking(ctx context.Context) (rankingSnapshot, error) {
 	}
 	domainModels := make([]domain.Model, 0, len(models))
 	for _, m := range models {
-		domainModels = append(domainModels, domain.Model{ID: m.ID, Slug: m.Slug, Name: m.Name, Vendor: m.Vendor})
+		domainModels = append(domainModels, domain.Model{ID: m.ID, Slug: m.Slug, Name: m.Name, Vendor: m.Vendor, Hidden: m.Hidden})
 	}
 	domainScores := make([]domain.Score, 0, len(scores))
 	for _, sc := range scores {
@@ -66,6 +66,7 @@ type rankingModel struct {
 	Slug        string             `json:"slug"`
 	Name        string             `json:"name"`
 	Vendor      string             `json:"vendor"`
+	Hidden      bool               `json:"hidden"`
 	Score       *float64           `json:"score"`
 	Coverage    float64            `json:"coverage"`
 	Provisional bool               `json:"provisional"`
@@ -80,15 +81,25 @@ func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	includeHidden := r.URL.Query().Get("includeHidden") == "1"
+	if includeHidden && !s.auth.Authenticated(r) {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "请先登录")
+		return
+	}
+
+	// Text dimensions never hold numeric scores, so they stay out of this table.
 	dimensions := make([]rankingDimension, 0, len(snapshot.dimensions))
 	for _, d := range snapshot.dimensions {
-		if d.Weight > 0 {
+		if !d.TextMode {
 			dimensions = append(dimensions, rankingDimension{ID: d.ID, Name: d.Name, Weight: d.Weight})
 		}
 	}
 
 	models := make([]rankingModel, 0, len(snapshot.result.Rows))
 	for _, row := range snapshot.result.Rows {
+		if row.Hidden && !includeHidden {
+			continue
+		}
 		var rank *int
 		if row.Rank > 0 {
 			value := row.Rank
@@ -102,6 +113,7 @@ func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
 			Slug:        row.Slug,
 			Name:        row.Name,
 			Vendor:      row.Vendor,
+			Hidden:      row.Hidden,
 			Score:       row.Score,
 			Coverage:    row.Coverage,
 			Provisional: row.Provisional,

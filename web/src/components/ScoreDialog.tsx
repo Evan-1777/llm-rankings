@@ -16,15 +16,18 @@ import styles from "./ScoreDialog.module.css";
 interface DraftRow {
   value: string;
   note: string;
+  text: string;
   openNote: boolean;
 }
 
 interface OriginalRow {
   value: number | null;
   note: string;
+  text: string;
 }
 
 const EMPTY_DIMENSIONS: ModelDetail["dimensions"] = [];
+const TEXT_LIMIT = 2000;
 
 interface ScoreDialogProps {
   open: boolean;
@@ -46,6 +49,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
   const toast = useToast();
   const promptOpen = useRef(false);
   const firstInput = useRef<HTMLInputElement>(null);
+  const firstText = useRef<HTMLTextAreaElement>(null);
 
   const slug = model?.slug ?? null;
 
@@ -64,12 +68,14 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
         const nextDraft: Record<number, DraftRow> = {};
         const nextOriginal: Record<number, OriginalRow> = {};
         for (const dimension of data.dimensions) {
+          const text = dimension.textMode ? dimension.text ?? "" : "";
           nextDraft[dimension.id] = {
             value: dimension.value == null ? "" : String(dimension.value),
             note: dimension.note ?? "",
+            text,
             openNote: Boolean(dimension.note),
           };
-          nextOriginal[dimension.id] = { value: dimension.value, note: dimension.note ?? "" };
+          nextOriginal[dimension.id] = { value: dimension.value, note: dimension.note ?? "", text };
         }
         setDetail(data);
         setDraft(nextDraft);
@@ -86,12 +92,16 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
   }, [open, slug]);
 
   const dimensions = detail?.dimensions ?? EMPTY_DIMENSIONS;
+  const scoreableDimensions = useMemo(
+    () => dimensions.filter((dimension) => !dimension.textMode && dimension.weight > 0),
+    [dimensions],
+  );
 
   useEffect(() => {
-    if (open && detail && detail.dimensions.length > 0) {
-      firstInput.current?.focus();
-    }
-  }, [open, detail]);
+    if (!open || !detail) return;
+    if (scoreableDimensions.length > 0) firstInput.current?.focus();
+    else firstText.current?.focus();
+  }, [open, detail, scoreableDimensions.length]);
 
   const updateRow = (id: number, patch: Partial<DraftRow>) => {
     setDraft((current) => ({
@@ -104,7 +114,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     const values: Record<number, number | null> = {};
     for (const dimension of dimensions) {
       const row = draft[dimension.id];
-      if (!row) continue;
+      if (!row || dimension.textMode) continue;
       values[dimension.id] = parseScoreInput(row.value).value;
     }
     return values;
@@ -115,6 +125,10 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     for (const dimension of dimensions) {
       const row = draft[dimension.id];
       if (!row) continue;
+      if (dimension.textMode) {
+        if (row.text.length > TEXT_LIMIT) next[dimension.id] = `文字不能超过 ${TEXT_LIMIT} 个字符`;
+        continue;
+      }
       const parsed = parseScoreInput(row.value);
       if (parsed.error) next[dimension.id] = parsed.error;
       else if (row.note.length > 500) next[dimension.id] = "备注不能超过 500 个字符";
@@ -127,14 +141,23 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
       const row = draft[dimension.id];
       const base = original[dimension.id];
       if (!row || !base) return false;
+      if (dimension.textMode) return row.text !== base.text;
       return parseScoreInput(row.value).value !== base.value || row.note !== base.note;
     });
   }, [dimensions, draft, original]);
 
+  // The preview must not depend on the public ranking containing this model:
+  // hidden models are absent there, but their draft still needs a live rank view.
+  const previewRows = useMemo(() => {
+    if (!model) return rankings.models;
+    if (rankings.models.some((row) => row.slug === model.slug)) return rankings.models;
+    return [...rankings.models, model];
+  }, [model, rankings.models]);
+
   const preview = useMemo(() => {
     if (!model) return null;
-    return previewRanking(rankings.models, dimensions, model.slug, parsedValues);
-  }, [model, rankings.models, dimensions, parsedValues]);
+    return previewRanking(previewRows, dimensions, model.slug, parsedValues);
+  }, [model, previewRows, dimensions, parsedValues]);
 
   const requestClose = useCallback(async () => {
     if (!dirty) {
@@ -143,7 +166,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     }
     const confirmed = await confirm({
       title: "放弃未保存的评分？",
-      body: "已修改的评分与备注不会保存。",
+      body: "已修改的评分、文字与备注不会保存。",
       confirmLabel: "放弃并离开",
       danger: true,
     });
@@ -187,6 +210,13 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
         const row = draft[dimension.id];
         const base = original[dimension.id];
         if (!row || !base) continue;
+        if (dimension.textMode) {
+          if (row.text !== base.text) {
+            await api.putModelText(model.slug, dimension.id, row.text);
+            applied += 1;
+          }
+          continue;
+        }
         const parsed = parseScoreInput(row.value);
         if (parsed.value == null) {
           if (base.value != null) {
@@ -210,6 +240,8 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
   };
 
   const invalid = Object.keys(errors).length > 0;
+  const firstNumericId = scoreableDimensions[0]?.id;
+  const firstTextId = dimensions.find((dimension) => dimension.textMode)?.id;
 
   return (
     <Dialog open={open} width="wide" labelledBy="score-title" onRequestClose={() => void requestClose()}>
@@ -239,7 +271,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
           <div className={styles.summaryCell}>
             <span className={styles.summaryLabel}>已评分维度</span>
             <strong className={styles.summaryValue}>
-              {preview?.scoredCount ?? 0} / {dimensions.length}
+              {preview?.scoredCount ?? 0} / {scoreableDimensions.length}
             </strong>
           </div>
         </div>
@@ -254,10 +286,38 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
           <p className={styles.status}>没有可评分的维度。请先在设置中为维度设置权重。</p>
         ) : (
           <ul className={styles.rows}>
-            {dimensions.map((dimension, index) => {
+            {dimensions.map((dimension) => {
               const row = draft[dimension.id];
               if (!row) return null;
               const error = errors[dimension.id];
+              if (dimension.textMode) {
+                return (
+                  <li className={styles.row} key={dimension.id}>
+                    <div className={styles.textBlock}>
+                      <div className={styles.rowIdentity}>
+                        <span className={styles.rowName}>{dimension.name}</span>
+                        <span className={styles.rowWeight}>文字</span>
+                      </div>
+                      <textarea
+                        className={styles.textInput}
+                        value={row.text}
+                        maxLength={TEXT_LIMIT}
+                        rows={3}
+                        placeholder="中文或英文均可"
+                        aria-label={`${dimension.name} 文字`}
+                        aria-invalid={Boolean(error)}
+                        ref={dimension.id === firstTextId ? firstText : undefined}
+                        onChange={(event) => updateRow(dimension.id, { text: event.target.value })}
+                      />
+                    </div>
+                    {error ? (
+                      <p className={styles.rowError} role="alert">
+                        {error}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              }
               // A note belongs to a score row, so it is only editable once the
               // dimension has a value; otherwise a PUT would have nothing to send.
               const hasScore = row.value.trim() !== "";
@@ -276,7 +336,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
                       step="0.1"
                       placeholder="—"
                       value={row.value}
-                      ref={index === 0 ? firstInput : undefined}
+                      ref={dimension.id === firstNumericId ? firstInput : undefined}
                       aria-label={`${dimension.name} 评分`}
                       aria-invalid={Boolean(error)}
                       onChange={(event) => updateRow(dimension.id, { value: event.target.value })}

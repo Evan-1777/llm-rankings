@@ -118,6 +118,23 @@ func createDimension(t *testing.T, e *env, name string, weight int) int64 {
 	return out.ID
 }
 
+func createTextDimension(t *testing.T, e *env, name string) int64 {
+	t.Helper()
+	code, body, _ := e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": name, "description": "", "weight": 0, "textMode": true,
+	}, nil)
+	if code != http.StatusCreated {
+		t.Fatalf("create text dimension = %d %s", code, body)
+	}
+	var out struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.ID
+}
+
 func createModel(t *testing.T, e *env, slug, name string) {
 	t.Helper()
 	code, body, _ := e.do(t, e.admin, http.MethodPost, "/api/models", map[string]any{
@@ -138,6 +155,7 @@ type rankingOutput struct {
 	} `json:"dimensions"`
 	Models []struct {
 		Slug        string             `json:"slug"`
+		Hidden      bool               `json:"hidden"`
 		Score       *float64           `json:"score"`
 		Coverage    float64            `json:"coverage"`
 		Provisional bool               `json:"provisional"`
@@ -170,8 +188,8 @@ func TestRankingFlowAndPrivacy(t *testing.T) {
 	createModel(t, e, "unscored", "Unscored")
 
 	dims := e.rankings(t, e.admin).Dimensions
-	if len(dims) != 3 {
-		t.Fatalf("zero-weight dimension must not enter rankings: %+v", dims)
+	if len(dims) != 4 {
+		t.Fatalf("zero-weight dimension must stay visible in rankings: %+v", dims)
 	}
 	byName := map[string]int64{}
 	for _, d := range dims {
@@ -323,11 +341,14 @@ func TestZeroWeightRankingAndUpdatedAt(t *testing.T) {
 		t.Fatalf("score on zero-weight dimension = %d %s", code, body)
 	}
 	ranking := e.rankings(t, e.anon)
-	if ranking.TotalWeight != 0 || len(ranking.Models) != 1 || ranking.Dimensions == nil || len(ranking.Dimensions) != 0 {
+	if ranking.TotalWeight != 0 || len(ranking.Models) != 1 || len(ranking.Dimensions) != 1 || ranking.Dimensions[0].Weight != 0 {
 		t.Fatalf("zero-weight ranking = %+v", ranking)
 	}
 	if ranking.Models[0].Score != nil || ranking.Models[0].Rank != nil || ranking.Models[0].Coverage != 0 {
 		t.Fatalf("zero-weight row = %+v", ranking.Models[0])
+	}
+	if ranking.Models[0].Scores[itoa(dimID)] != 9 {
+		t.Fatalf("zero-weight value must stay visible: %+v", ranking.Models[0].Scores)
 	}
 	if ranking.UpdatedAt == nil {
 		t.Fatal("updatedAt should reflect the stored score")
@@ -496,6 +517,10 @@ func TestMaintenanceGate(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("health during maintenance = %d %s", code, body)
 	}
+	code, body, _ = e.do(t, e.anon, http.MethodPost, "/api/auth/logout", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"authenticated":false`) {
+		t.Fatalf("logout during maintenance = %d %s", code, body)
+	}
 	code, body, _ = e.do(t, e.anon, http.MethodGet, settingsPath, nil, nil)
 	if code != http.StatusOK || !strings.Contains(string(body), `"maintenanceMode":true`) {
 		t.Fatalf("public settings during maintenance = %d %s", code, body)
@@ -541,7 +566,7 @@ func TestExportAndStatic(t *testing.T) {
 	if err := json.Unmarshal(body, &snapshot); err != nil {
 		t.Fatalf("export is not JSON: %v", err)
 	}
-	for _, key := range []string{"version", "exportedAt", "dimensions", "models", "scores"} {
+	for _, key := range []string{"version", "exportedAt", "dimensions", "models", "scores", "texts"} {
 		if _, ok := snapshot[key]; !ok {
 			t.Fatalf("export missing %q", key)
 		}
@@ -687,5 +712,134 @@ func TestReorderDimensionsFlow(t *testing.T) {
 	code, _, _ = e.do(t, e.admin, http.MethodPut, "/api/dimensions/order", map[string]any{"ids": want}, map[string]string{"Origin": "https://evil.test"})
 	if code != http.StatusForbidden {
 		t.Fatalf("cross-origin reorder = %d, want 403", code)
+	}
+}
+func TestModelVisibilityArchiveAndText(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	numericID := createDimension(t, e, "Reasoning", 50)
+	textID := createTextDimension(t, e, "Notes")
+	createModel(t, e, "visible", "Visible")
+	createModel(t, e, "hidden", "Hidden")
+	createModel(t, e, "archived", "Archived")
+
+	code, body, _ := e.do(t, e.admin, http.MethodPatch, "/api/models/hidden", map[string]any{"hidden": true}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"hidden":true`) {
+		t.Fatalf("hide model = %d %s", code, body)
+	}
+	code, detail, _ := e.do(t, e.admin, http.MethodGet, "/api/models/hidden", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), `"name":"Hidden"`) || !strings.Contains(string(detail), `"vendor":"Vendor"`) || !strings.Contains(string(detail), "private note") {
+		t.Fatalf("hidden-only patch clobbered profile: %d %s", code, detail)
+	}
+
+	code, models, _ := e.do(t, e.anon, http.MethodGet, "/api/models", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(models), `"slug":"hidden"`) || !strings.Contains(string(models), `"hidden":true`) {
+		t.Fatalf("default list must include hidden models: %d %s", code, models)
+	}
+	code, _, _ = e.do(t, e.anon, http.MethodGet, "/api/models?includeArchived=1", nil, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous includeArchived = %d, want 401", code)
+	}
+
+	public := e.rankings(t, e.anon)
+	for _, model := range public.Models {
+		if model.Slug == "hidden" {
+			t.Fatalf("hidden model leaked into public rankings: %+v", public.Models)
+		}
+	}
+	code, _, _ = e.do(t, e.anon, http.MethodGet, "/api/rankings?includeHidden=1", nil, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous includeHidden = %d, want 401", code)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/rankings?includeHidden=1", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"slug":"hidden"`) || !strings.Contains(string(body), `"hidden":true`) {
+		t.Fatalf("admin includeHidden = %d %s", code, body)
+	}
+	var adminRanking rankingOutput
+	if err := json.Unmarshal(body, &adminRanking); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range adminRanking.Models {
+		if model.Slug == "hidden" && model.Rank != nil {
+			t.Fatalf("hidden model must not receive a rank: %+v", model)
+		}
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/models/archived/archive", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), "archivedAt") {
+		t.Fatalf("archive model = %d %s", code, body)
+	}
+	code, models, _ = e.do(t, e.anon, http.MethodGet, "/api/models", nil, nil)
+	if code != http.StatusOK || strings.Contains(string(models), `"slug":"archived"`) {
+		t.Fatalf("archived model still listed: %s", models)
+	}
+	code, models, _ = e.do(t, e.admin, http.MethodGet, "/api/models?includeArchived=1", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(models), `"archivedAt":"`) {
+		t.Fatalf("admin archived list = %d %s", code, models)
+	}
+	code, _, _ = e.do(t, e.anon, http.MethodGet, "/api/models/archived", nil, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("archived detail = %d, want 404", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, "/api/models/archived/scores/"+itoa(numericID), map[string]any{"value": 8}, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("archived model score = %d, want 404", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPatch, "/api/models/archived", map[string]any{"name": "Renamed"}, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("archived model patch = %d, want 404", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPost, "/api/models/archived/restore", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("restore model = %d", code)
+	}
+	code, _, _ = e.do(t, e.anon, http.MethodGet, "/api/models/archived", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("restored detail = %d", code)
+	}
+
+	textPath := "/api/models/hidden/texts/" + itoa(textID)
+	code, body, _ = e.do(t, e.admin, http.MethodPut, textPath, map[string]any{"text": "第一条\nsecond line"}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("put text = %d %s", code, body)
+	}
+	code, detail, _ = e.do(t, e.anon, http.MethodGet, "/api/models/hidden", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), `"textMode":true`) || !strings.Contains(string(detail), "second line") {
+		t.Fatalf("detail missing text: %d %s", code, detail)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, textPath, map[string]any{"text": strings.Repeat("字", 2001)}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "text") {
+		t.Fatalf("oversized text = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/models/hidden/texts/"+itoa(numericID), map[string]any{"text": "wrong"}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "dimensionId") {
+		t.Fatalf("text on numeric dimension = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/models/hidden/scores/"+itoa(textID), map[string]any{"value": 8}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "dimensionId") {
+		t.Fatalf("score on text dimension = %d %s", code, body)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, textPath, map[string]any{"text": ""}, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("clear text = %d", code)
+	}
+	code, detail, _ = e.do(t, e.anon, http.MethodGet, "/api/models/hidden", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), `"text":""`) {
+		t.Fatalf("cleared text not empty: %d %s", code, detail)
+	}
+
+	// Text dimensions reject text writes once archived, and scores on them never count.
+	code, _, _ = e.do(t, e.admin, http.MethodPost, "/api/dimensions/"+itoa(textID)+"/archive", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("archive text dimension = %d", code)
+	}
+	code, _, _ = e.do(t, e.admin, http.MethodPut, textPath, map[string]any{"text": "late"}, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("archived text dimension write = %d, want 404", code)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/export", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"hidden": true`) || !strings.Contains(string(body), `"texts": [`) {
+		t.Fatalf("export missing new fields: %d", code)
 	}
 }

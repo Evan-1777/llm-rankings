@@ -16,6 +16,7 @@ type dimensionResponse struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Weight      int     `json:"weight"`
+	TextMode    bool    `json:"textMode"`
 	ArchivedAt  *string `json:"archivedAt"`
 	CreatedAt   string  `json:"createdAt"`
 	UpdatedAt   string  `json:"updatedAt"`
@@ -46,6 +47,7 @@ func toDimensionResponse(d store.Dimension) dimensionResponse {
 		Name:        d.Name,
 		Description: d.Description,
 		Weight:      d.Weight,
+		TextMode:    d.TextMode,
 		ArchivedAt:  archived,
 		CreatedAt:   d.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   d.UpdatedAt.UTC().Format(time.RFC3339),
@@ -74,15 +76,17 @@ type dimensionInput struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Weight      int    `json:"weight"`
+	TextMode    bool   `json:"textMode"`
 }
 
 type dimensionPatch struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Weight      *int    `json:"weight"`
+	TextMode    *bool   `json:"textMode"`
 }
 
-func validateDimension(name, description string, weight int) map[string]string {
+func validateDimension(name, description string, weight int, textMode bool) map[string]string {
 	fields := map[string]string{}
 	if length := utf8.RuneCountInString(name); length < 1 || length > 40 {
 		fields["name"] = "名称需为 1–40 个字符"
@@ -92,6 +96,8 @@ func validateDimension(name, description string, weight int) map[string]string {
 	}
 	if weight < 0 || weight > 100 {
 		fields["weight"] = "权重需为 0–100 的整数"
+	} else if textMode && weight != 0 {
+		fields["weight"] = "文字维度的权重固定为 0"
 	}
 	if len(fields) == 0 {
 		return nil
@@ -142,11 +148,11 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if fields := validateDimension(input.Name, input.Description, input.Weight); fields != nil {
+	if fields := validateDimension(input.Name, input.Description, input.Weight, input.TextMode); fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度信息", fields)
 		return
 	}
-	d, err := s.store.CreateDimension(r.Context(), input.Name, input.Description, input.Weight)
+	d, err := s.store.CreateDimension(r.Context(), input.Name, input.Description, input.Weight, input.TextMode)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeFields(w, http.StatusConflict, "conflict", "维度名称已存在", map[string]string{"name": "维度名称已存在"})
@@ -167,7 +173,7 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSON(w, r, &patch) {
 		return
 	}
-	if patch.Name == nil && patch.Description == nil && patch.Weight == nil {
+	if patch.Name == nil && patch.Description == nil && patch.Weight == nil && patch.TextMode == nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "没有需要更新的字段", map[string]string{"_": "没有需要更新的字段"})
 		return
 	}
@@ -176,7 +182,7 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err)
 		return
 	}
-	name, description, weight := current.Name, current.Description, current.Weight
+	name, description, weight, textMode := current.Name, current.Description, current.Weight, current.TextMode
 	if patch.Name != nil {
 		name = strings.TrimSpace(*patch.Name)
 	}
@@ -186,11 +192,14 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	if patch.Weight != nil {
 		weight = *patch.Weight
 	}
-	if fields := validateDimension(name, description, weight); fields != nil {
+	if patch.TextMode != nil {
+		textMode = *patch.TextMode
+	}
+	if fields := validateDimension(name, description, weight, textMode); fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度信息", fields)
 		return
 	}
-	updated, err := s.store.UpdateDimension(r.Context(), id, name, description, weight)
+	updated, err := s.store.UpdateDimension(r.Context(), id, name, description, weight, textMode)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeFields(w, http.StatusConflict, "conflict", "维度名称已存在", map[string]string{"name": "维度名称已存在"})
@@ -253,6 +262,10 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "conflict", "对象已存在")
 	case errors.Is(err, store.ErrArchived):
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "维度已归档", map[string]string{"dimensionId": "维度已归档"})
+	case errors.Is(err, store.ErrTextDimension):
+		writeFields(w, http.StatusUnprocessableEntity, "validation", "维度不接受数值评分", map[string]string{"dimensionId": "文字维度不接受数值评分"})
+	case errors.Is(err, store.ErrNumericDimension):
+		writeFields(w, http.StatusUnprocessableEntity, "validation", "维度不接受文字", map[string]string{"dimensionId": "数值维度不接受文字，请填写评分"})
 	case errors.Is(err, store.ErrInvalid):
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "评分不合法", map[string]string{"value": "评分需为有限且不小于 0 的数"})
 	default:

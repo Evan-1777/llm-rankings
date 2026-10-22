@@ -12,12 +12,14 @@ import (
 )
 
 type modelResponse struct {
-	Slug      string `json:"slug"`
-	Name      string `json:"name"`
-	Vendor    string `json:"vendor"`
-	Notes     string `json:"notes"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	Slug       string  `json:"slug"`
+	Name       string  `json:"name"`
+	Vendor     string  `json:"vendor"`
+	Notes      string  `json:"notes"`
+	Hidden     bool    `json:"hidden"`
+	ArchivedAt *string `json:"archivedAt"`
+	CreatedAt  string  `json:"createdAt"`
+	UpdatedAt  string  `json:"updatedAt"`
 }
 
 type modelListItem struct {
@@ -25,6 +27,8 @@ type modelListItem struct {
 	Name             string  `json:"name"`
 	Vendor           string  `json:"vendor"`
 	Notes            *string `json:"notes,omitempty"`
+	Hidden           bool    `json:"hidden"`
+	ArchivedAt       *string `json:"archivedAt"`
 	ScoreCount       int     `json:"scoreCount"`
 	ScoredDimensions int     `json:"scoredDimensions"`
 	UpdatedAt        string  `json:"updatedAt"`
@@ -35,6 +39,7 @@ type modelDetailResponse struct {
 	Name           string           `json:"name"`
 	Vendor         string           `json:"vendor"`
 	Notes          *string          `json:"notes,omitempty"`
+	Hidden         bool             `json:"hidden"`
 	Score          *float64         `json:"score"`
 	Coverage       float64          `json:"coverage"`
 	Provisional    bool             `json:"provisional"`
@@ -46,26 +51,43 @@ type modelDetailResponse struct {
 }
 
 type modelDimension struct {
-	ID     int64    `json:"id"`
-	Name   string   `json:"name"`
-	Weight int      `json:"weight"`
-	Value  *float64 `json:"value"`
-	Note   *string  `json:"note,omitempty"`
+	ID       int64    `json:"id"`
+	Name     string   `json:"name"`
+	Weight   int      `json:"weight"`
+	TextMode bool     `json:"textMode"`
+	Value    *float64 `json:"value"`
+	Text     *string  `json:"text,omitempty"`
+	Note     *string  `json:"note,omitempty"`
+}
+
+func stampString(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	value := t.UTC().Format(time.RFC3339)
+	return &value
 }
 
 func toModelResponse(m store.Model) modelResponse {
 	return modelResponse{
-		Slug:      m.Slug,
-		Name:      m.Name,
-		Vendor:    m.Vendor,
-		Notes:     m.Notes,
-		CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: m.UpdatedAt.UTC().Format(time.RFC3339),
+		Slug:       m.Slug,
+		Name:       m.Name,
+		Vendor:     m.Vendor,
+		Notes:      m.Notes,
+		Hidden:     m.Hidden,
+		ArchivedAt: stampString(m.ArchivedAt),
+		CreatedAt:  m.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:  m.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
 func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
-	models, err := s.store.ListModels(r.Context())
+	includeArchived := r.URL.Query().Get("includeArchived") == "1"
+	if includeArchived && !s.auth.Authenticated(r) {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "请先登录")
+		return
+	}
+	models, err := s.store.ListModels(r.Context(), includeArchived)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -77,6 +99,8 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 			Slug:             m.Slug,
 			Name:             m.Name,
 			Vendor:           m.Vendor,
+			Hidden:           m.Hidden,
+			ArchivedAt:       stampString(m.ArchivedAt),
 			ScoreCount:       m.ScoreCount,
 			ScoredDimensions: m.ScoredDimensions,
 			UpdatedAt:        m.UpdatedAt.UTC().Format(time.RFC3339),
@@ -101,6 +125,7 @@ type modelPatch struct {
 	Name   *string `json:"name"`
 	Vendor *string `json:"vendor"`
 	Notes  *string `json:"notes"`
+	Hidden *bool   `json:"hidden"`
 }
 
 func validateModel(name, slug, vendor, notes string) map[string]string {
@@ -176,17 +201,20 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("slug")
-	current, err := s.store.ModelBySlug(r.Context(), slug)
+	current, err := s.store.ModelBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		s.writeStoreError(w, err)
+		return
+	}
+	if current.ArchivedAt != nil {
+		writeError(w, http.StatusNotFound, "not_found", "对象不存在")
 		return
 	}
 	var patch modelPatch
 	if !s.readJSON(w, r, &patch) {
 		return
 	}
-	if patch.Name == nil && patch.Vendor == nil && patch.Notes == nil {
+	if patch.Name == nil && patch.Vendor == nil && patch.Notes == nil && patch.Hidden == nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "没有需要更新的字段", map[string]string{"_": "没有需要更新的字段"})
 		return
 	}
@@ -204,19 +232,32 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查模型信息", fields)
 		return
 	}
-	updated, err := s.store.UpdateModel(r.Context(), current.ID, name, vendor, notes)
-	if err != nil {
-		s.writeStoreError(w, err)
-		return
+	updated := current
+	if patch.Name != nil || patch.Vendor != nil || patch.Notes != nil {
+		updated, err = s.store.UpdateModel(r.Context(), current.ID, name, vendor, notes)
+		if err != nil {
+			s.writeStoreError(w, err)
+			return
+		}
+	}
+	if patch.Hidden != nil {
+		updated, err = s.store.SetModelHidden(r.Context(), current.ID, *patch.Hidden)
+		if err != nil {
+			s.writeStoreError(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, toModelResponse(updated))
 }
 
 func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("slug")
-	model, err := s.store.ModelBySlug(r.Context(), slug)
+	model, err := s.store.ModelBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		s.writeStoreError(w, err)
+		return
+	}
+	if model.ArchivedAt != nil {
+		writeError(w, http.StatusNotFound, "not_found", "对象不存在")
 		return
 	}
 	snapshot, err := s.loadRanking(r.Context())
@@ -234,6 +275,11 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	for _, sc := range scores {
 		notesByDimension[sc.DimensionID] = sc.Note
 	}
+	texts, err := s.store.TextsForModel(r.Context(), model.ID)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
 
 	var row *domain.Row
 	for i := range snapshot.result.Rows {
@@ -249,19 +295,32 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 
 	dimensions := make([]modelDimension, 0, len(snapshot.dimensions))
 	scoredCount := 0
+	dimensionCount := 0
 	for _, d := range snapshot.dimensions {
-		if d.Weight <= 0 {
+		item := modelDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, TextMode: d.TextMode}
+		if d.TextMode {
+			text := texts[d.ID]
+			item.Text = &text
+			if admin {
+				note := notesByDimension[d.ID]
+				item.Note = &note
+			}
+			dimensions = append(dimensions, item)
 			continue
 		}
-		item := modelDimension{ID: d.ID, Name: d.Name, Weight: d.Weight}
 		if value, ok := row.DimensionScores[d.ID]; ok {
 			v := value
 			item.Value = &v
-			scoredCount++
+			if d.Weight > 0 {
+				scoredCount++
+			}
 		}
 		if admin {
 			note := notesByDimension[d.ID]
 			item.Note = &note
+		}
+		if d.Weight > 0 {
+			dimensionCount++
 		}
 		dimensions = append(dimensions, item)
 	}
@@ -275,13 +334,14 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 		Slug:           model.Slug,
 		Name:           model.Name,
 		Vendor:         model.Vendor,
+		Hidden:         model.Hidden,
 		Score:          row.Score,
 		Coverage:       row.Coverage,
 		Provisional:    row.Provisional,
 		Rank:           rank,
 		Dimensions:     dimensions,
 		ScoredCount:    scoredCount,
-		DimensionCount: len(dimensions),
+		DimensionCount: dimensionCount,
 		UpdatedAt:      model.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if admin {
@@ -290,6 +350,29 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, response)
 }
+
+func (s *Server) handleArchiveModel(w http.ResponseWriter, r *http.Request) {
+	s.setModelArchived(w, r, true)
+}
+
+func (s *Server) handleRestoreModel(w http.ResponseWriter, r *http.Request) {
+	s.setModelArchived(w, r, false)
+}
+
+func (s *Server) setModelArchived(w http.ResponseWriter, r *http.Request, archived bool) {
+	model, err := s.store.ModelBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	updated, err := s.store.SetModelArchived(r.Context(), model.ID, archived)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toModelResponse(updated))
+}
+
 func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	model, err := s.store.ModelBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {

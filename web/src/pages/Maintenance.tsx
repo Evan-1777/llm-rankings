@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import styles from "./Maintenance.module.css";
 
@@ -10,9 +9,6 @@ export function Maintenance() {
       <p className={styles.kicker}>LLM RANK</p>
       <h1 className={styles.title}>维护中</h1>
       <p className={styles.note}>站点正在维护，稍后刷新页面再试。</p>
-      <Link className={styles.login} to="/login">
-        管理员登录
-      </Link>
     </main>
   );
 }

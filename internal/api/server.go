@@ -62,8 +62,11 @@ func New(st *store.Store, mgr *auth.Manager, logger *slog.Logger, dist fs.FS, tr
 	mux.HandleFunc("GET /api/models/{slug}", s.handleGetModel)
 	mux.HandleFunc("PATCH /api/models/{slug}", s.admin(s.handleUpdateModel))
 	mux.HandleFunc("DELETE /api/models/{slug}", s.admin(s.handleDeleteModel))
+	mux.HandleFunc("POST /api/models/{slug}/archive", s.admin(s.handleArchiveModel))
+	mux.HandleFunc("POST /api/models/{slug}/restore", s.admin(s.handleRestoreModel))
 	mux.HandleFunc("PUT /api/models/{slug}/scores/{dimensionId}", s.admin(s.handlePutScore))
 	mux.HandleFunc("DELETE /api/models/{slug}/scores/{dimensionId}", s.admin(s.handleDeleteScore))
+	mux.HandleFunc("PUT /api/models/{slug}/texts/{dimensionId}", s.admin(s.handlePutModelText))
 
 	mux.HandleFunc("GET /api/export", s.admin(s.handleExport))
 	mux.HandleFunc("/api/", s.handleAPINotFound)

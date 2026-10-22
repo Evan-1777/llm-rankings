@@ -32,12 +32,16 @@ func (s *Server) maintenanceGate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if s.auth.Authenticated(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		settings, err := s.store.DisplaySettings(r.Context())
 		if err != nil {
 			s.internalError(w, err)
 			return
 		}
-		if !settings.MaintenanceMode || s.auth.Authenticated(r) {
+		if !settings.MaintenanceMode {
 			next.ServeHTTP(w, r)
 			return
 		}

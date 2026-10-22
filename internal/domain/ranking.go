@@ -20,6 +20,7 @@ type Model struct {
 	Slug   string
 	Name   string
 	Vendor string
+	Hidden bool
 }
 
 // Score is a stored rating.
@@ -56,10 +57,15 @@ type Result struct {
 const ProvisionalThreshold = 0.8
 
 // Compute ranks models with the single global set of dimension weights.
+// Dimensions with weight 0 keep their stored values in DimensionScores but stay
+// out of the composite score, coverage and ordering. Hidden models are scored
+// the same way, sorted after every visible model and never receive a rank.
 func Compute(in Input) Result {
 	weights := make(map[int64]int, len(in.Dimensions))
+	known := make(map[int64]bool, len(in.Dimensions))
 	totalWeight := 0
 	for _, d := range in.Dimensions {
+		known[d.ID] = true
 		if d.Weight > 0 {
 			weights[d.ID] = d.Weight
 			totalWeight += d.Weight
@@ -68,8 +74,7 @@ func Compute(in Input) Result {
 
 	scoresByModel := make(map[int64]map[int64]float64, len(in.Models))
 	for _, sc := range in.Scores {
-		weight, ok := weights[sc.DimensionID]
-		if !ok || weight == 0 || math.IsNaN(sc.Value) || math.IsInf(sc.Value, 0) || sc.Value < 0 {
+		if !known[sc.DimensionID] || math.IsNaN(sc.Value) || math.IsInf(sc.Value, 0) || sc.Value < 0 {
 			continue
 		}
 		if scoresByModel[sc.ModelID] == nil {
@@ -84,21 +89,22 @@ func Compute(in Input) Result {
 	copy(ordered, in.Dimensions)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
 
-	rows := make([]Row, 0, len(in.Models))
+	visible := make([]Row, 0, len(in.Models))
+	hidden := make([]Row, 0, len(in.Models))
 	for _, m := range in.Models {
 		row := Row{Model: m, DimensionScores: map[int64]float64{}}
 		scoredWeight := 0
 		weightedSum := 0.0
 		for _, dimension := range ordered {
-			weight, weighted := weights[dimension.ID]
-			if !weighted || weight == 0 {
-				continue
-			}
 			value, scored := scoresByModel[m.ID][dimension.ID]
 			if !scored {
 				continue
 			}
 			row.DimensionScores[dimension.ID] = value
+			weight, weighted := weights[dimension.ID]
+			if !weighted || weight == 0 {
+				continue
+			}
 			scoredWeight += weight
 			// Normalize before multiplying so finite extreme values cannot overflow.
 			weightedSum += (float64(weight) / float64(totalWeight)) * value
@@ -109,9 +115,30 @@ func Compute(in Input) Result {
 			row.Coverage = float64(scoredWeight) / float64(totalWeight)
 			row.Provisional = row.Coverage < ProvisionalThreshold
 		}
-		rows = append(rows, row)
+		if m.Hidden {
+			hidden = append(hidden, row)
+		} else {
+			visible = append(visible, row)
+		}
 	}
 
+	sortRows(visible)
+	sortRows(hidden)
+	rows := append(visible, hidden...)
+
+	rank := 0
+	for i := range rows {
+		if rows[i].Hidden || rows[i].Score == nil {
+			continue
+		}
+		rank++
+		rows[i].Rank = rank
+	}
+
+	return Result{Rows: rows, TotalWeight: totalWeight}
+}
+
+func sortRows(rows []Row) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
 		if (a.Score == nil) != (b.Score == nil) {
@@ -131,15 +158,4 @@ func Compute(in Input) Result {
 		}
 		return a.Slug < b.Slug
 	})
-
-	rank := 0
-	for i := range rows {
-		if rows[i].Score == nil {
-			continue
-		}
-		rank++
-		rows[i].Rank = rank
-	}
-
-	return Result{Rows: rows, TotalWeight: totalWeight}
 }

@@ -67,7 +67,7 @@
 
 .modelCols {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 80px 132px;
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 80px 174px;
   gap: 16px;
 }
 
@@ -90,7 +90,7 @@
 }
 
 .modelRow {
-  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 80px 132px;
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 80px 174px;
 }
 
 .dimRow:hover,
@@ -167,6 +167,14 @@
   min-width: 0;
 }
 
+.nameLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .itemName {
   font-size: 15px;
   line-height: 1.35;
@@ -219,6 +227,32 @@
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.archiveSection {
+  margin-top: 48px;
+}
+
+.archiveHead {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.archivedRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 174px;
+  gap: 16px;
+  align-items: center;
+  min-height: 76px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.archivedRow:hover {
+  background: var(--surface);
 }
 
 .slug {
@@ -365,7 +399,12 @@
 
   .modelCols,
   .modelRow {
-    grid-template-columns: 34px minmax(0, 1.3fr) minmax(0, 0.9fr) 64px 124px;
+    grid-template-columns: 34px minmax(0, 1.3fr) minmax(0, 0.9fr) 64px 166px;
+    gap: 10px;
+  }
+
+  .archivedRow {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) 166px;
     gap: 10px;
   }
 }
@@ -498,5 +537,40 @@
 
   .footerNote {
     margin-top: 40px;
+  }
+
+  .modelRow .rowActions {
+    display: grid;
+    grid-template-columns: repeat(3, 34px);
+    gap: 4px;
+    justify-items: end;
+  }
+
+  .archiveSection {
+    margin-top: 36px;
+  }
+
+  .archivedRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name actions"
+      "meta actions";
+    gap: 4px 10px;
+    min-height: 0;
+    padding: 14px 0;
+  }
+
+  .archivedRow .nameBlock {
+    grid-area: name;
+  }
+
+  .archivedRow .slug {
+    grid-area: meta;
+    justify-self: start;
+  }
+
+  .archivedRow .rowActions {
+    grid-area: actions;
+    align-self: center;
   }
 }

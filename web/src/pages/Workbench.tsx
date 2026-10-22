@@ -42,7 +42,7 @@ function nextDirection(key: string, current: SortState): SortDir {
 
 export function Workbench() {
   useDocumentTitle("评分工作台");
-  const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(signal), []);
+  const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(true, signal), []);
   const session = useSession();
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -73,7 +73,8 @@ export function Workbench() {
   const plan = useMemo(() => collectQuickEdit(draft, baseline, dimensions), [draft, baseline, dimensions]);
 
   const scored = models.filter((model) => model.score != null).length;
-  const canQuickEdit = Boolean(data && models.length > 0 && dimensions.length > 0 && data.totalWeight > 0);
+  const canQuickEdit = Boolean(data && models.length > 0 && dimensions.length > 0);
+  const weightDimensions = dimensions.filter((dimension) => dimension.weight > 0);
   const dirty = editing && plan.pendingCount > 0;
 
   const refreshAll = () => {
@@ -205,20 +206,16 @@ export function Workbench() {
   } else if (error) {
     content = <ErrorState error={error} onRetry={reload} />;
   } else if (data && dimensions.length === 0) {
+    const activeSessionDimensions = session.dimensions.filter((dimension) => !dimension.archivedAt);
+    const onlyText = activeSessionDimensions.some((dimension) => dimension.textMode);
     content = (
-      <EmptyState title="尚未创建维度" text="评分需要维度与权重，先在设置中创建维度。">
+      <EmptyState
+        title={onlyText ? "暂无参与评分的数值维度" : "尚未创建维度"}
+        text={onlyText ? "文字维度在模型评分弹窗中填写，不进入数值评分表。" : "评分需要维度与权重，先在设置中创建维度。"}
+      >
         <Button variant="primary" onClick={() => navigate("/settings?tab=dimensions")}>
           前往维度设置
         </Button>
-      </EmptyState>
-    );
-  } else if (data && data.totalWeight === 0) {
-    content = (
-      <EmptyState title="尚未设置权重" text="所有启用维度的权重均为 0，评分不会计入排行。">
-        <Button variant="primary" onClick={() => navigate("/settings?tab=dimensions")}>
-          设置权重
-        </Button>
-        <Button onClick={() => setModelOpen(true)}>新增模型</Button>
       </EmptyState>
     );
   } else if (models.length === 0) {
@@ -288,12 +285,12 @@ export function Workbench() {
           </thead>
           <tbody>
             {rows.map((model) => {
-              const ratedCount = dimensions.reduce(
+              const ratedCount = weightDimensions.reduce(
                 (count, dimension) => count + (model.scores[String(dimension.id)] != null ? 1 : 0),
                 0,
               );
               return (
-                <tr key={model.slug} className={styles.row}>
+                <tr key={model.slug} className={`${styles.row} ${model.hidden ? styles.hiddenRow : ""}`}>
                   <td className={`${styles.td} ${styles.modelCell}`}>
                     <Link to={`/models/${model.slug}`} className={styles.modelName}>
                       {model.name}
@@ -343,7 +340,7 @@ export function Workbench() {
                       coverage={model.coverage}
                       provisional={model.provisional}
                       scored={ratedCount}
-                      total={dimensions.length}
+                      total={weightDimensions.length}
                     />
                   </td>
                   {!editing ? (

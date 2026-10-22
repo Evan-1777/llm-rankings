@@ -42,7 +42,7 @@ func TestMigrationCreatesEmptySchema(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	defer again.Close()
-	if _, err := again.ListModels(ctx); err != nil {
+	if _, err := again.ListModels(ctx, false); err != nil {
 		t.Fatalf("list after reopen: %v", err)
 	}
 }
@@ -51,28 +51,28 @@ func TestDimensionLifecycle(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
 
-	d, err := s.CreateDimension(ctx, "Reasoning", "reasoning quality", 25)
+	d, err := s.CreateDimension(ctx, "Reasoning", "reasoning quality", 25, false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if d.Weight != 25 || d.ArchivedAt != nil {
 		t.Fatalf("unexpected dimension: %+v", d)
 	}
-	if _, err := s.CreateDimension(ctx, "reasoning", "", 10); !errors.Is(err, ErrConflict) {
+	if _, err := s.CreateDimension(ctx, "reasoning", "", 10, false); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate name (case-insensitive) error = %v", err)
 	}
-	if _, err := s.CreateDimension(ctx, "Bad", "", -1); err == nil {
+	if _, err := s.CreateDimension(ctx, "Bad", "", -1, false); err == nil {
 		t.Fatal("weight -1 must be rejected by the schema")
 	}
-	if _, err := s.CreateDimension(ctx, "Bad2", "", 101); err == nil {
+	if _, err := s.CreateDimension(ctx, "Bad2", "", 101, false); err == nil {
 		t.Fatal("weight 101 must be rejected by the schema")
 	}
 
-	updated, err := s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 0)
+	updated, err := s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 0, false)
 	if err != nil || updated.Weight != 0 {
 		t.Fatalf("update weight: %+v %v", updated, err)
 	}
-	updated, err = s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100)
+	updated, err = s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false)
 	if err != nil || updated.Weight != 100 {
 		t.Fatalf("update weight 100: %+v %v", updated, err)
 	}
@@ -110,7 +110,7 @@ func TestDimensionLifecycle(t *testing.T) {
 func TestModelAndScoreLifecycle(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
-	d, _ := s.CreateDimension(ctx, "Quality", "", 100)
+	d, _ := s.CreateDimension(ctx, "Quality", "", 100, false)
 
 	m, err := s.CreateModel(ctx, "gpt-5", "GPT-5", "OpenAI", "private")
 	if err != nil {
@@ -170,9 +170,9 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
-	active, _ := s.CreateDimension(ctx, "Active", "", 50)
-	idle, _ := s.CreateDimension(ctx, "Idle", "", 0)
-	archived, _ := s.CreateDimension(ctx, "Archived", "", 50)
+	active, _ := s.CreateDimension(ctx, "Active", "", 50, false)
+	idle, _ := s.CreateDimension(ctx, "Idle", "", 0, false)
+	archived, _ := s.CreateDimension(ctx, "Archived", "", 50, false)
 	if _, err := s.CreateModel(ctx, "m", "Model", "", ""); err != nil {
 		t.Fatalf("create model: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
 	if _, err := s.CreateModel(ctx, "empty", "Empty", "", ""); err != nil {
 		t.Fatalf("create empty model: %v", err)
 	}
-	models, err := s.ListModels(ctx)
+	models, err := s.ListModels(ctx, false)
 	if err != nil {
 		t.Fatalf("list models: %v", err)
 	}
@@ -272,9 +272,9 @@ func TestDimensionOrderMigrationKeepsLegacyOrder(t *testing.T) {
 func TestDimensionOrderAppendArchiveRestoreAndRestart(t *testing.T) {
 	s, path := openTest(t)
 	ctx := context.Background()
-	a, _ := s.CreateDimension(ctx, "A", "", 10)
-	b, _ := s.CreateDimension(ctx, "B", "", 10)
-	c, _ := s.CreateDimension(ctx, "C", "", 10)
+	a, _ := s.CreateDimension(ctx, "A", "", 10, false)
+	b, _ := s.CreateDimension(ctx, "B", "", 10, false)
+	c, _ := s.CreateDimension(ctx, "C", "", 10, false)
 
 	if err := s.ReorderDimensions(ctx, []int64{c.ID, a.ID, b.ID}); err != nil {
 		t.Fatalf("reorder: %v", err)
@@ -297,7 +297,7 @@ func TestDimensionOrderAppendArchiveRestoreAndRestart(t *testing.T) {
 	if err := s.DeleteDimension(ctx, c.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	d, _ := s.CreateDimension(ctx, "D", "", 10)
+	d, _ := s.CreateDimension(ctx, "D", "", 10, false)
 	all, _ = s.ListDimensions(ctx, true)
 	if !equalIDs(all, a.ID, b.ID, d.ID) {
 		t.Fatalf("new dimension not appended: %v", ids(all))
@@ -373,9 +373,9 @@ func TestReorderDimensionsRejectsMismatch(t *testing.T) {
 	if err := s.ReorderDimensions(ctx, nil); err != nil {
 		t.Fatalf("empty store should accept empty order: %v", err)
 	}
-	a, _ := s.CreateDimension(ctx, "A", "", 10)
-	b, _ := s.CreateDimension(ctx, "B", "", 10)
-	c, _ := s.CreateDimension(ctx, "C", "", 10)
+	a, _ := s.CreateDimension(ctx, "A", "", 10, false)
+	b, _ := s.CreateDimension(ctx, "B", "", 10, false)
+	c, _ := s.CreateDimension(ctx, "C", "", 10, false)
 	before, _ := s.ListDimensions(ctx, true)
 	beforeStamps := make([]time.Time, len(before))
 	for i, dim := range before {
@@ -410,5 +410,129 @@ func TestReorderDimensionsRejectsMismatch(t *testing.T) {
 	after, _ = s.ListDimensions(ctx, true)
 	if !equalIDs(after, c.ID, a.ID, b.ID) {
 		t.Fatalf("valid reorder not applied: %v", ids(after))
+	}
+}
+func TestModelVisibilityAndArchive(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	m, err := s.CreateModel(ctx, "m", "Model", "", "")
+	if err != nil {
+		t.Fatalf("create model: %v", err)
+	}
+	if m.Hidden || m.ArchivedAt != nil {
+		t.Fatalf("new model must default to visible and active: %+v", m)
+	}
+	hidden, err := s.SetModelHidden(ctx, m.ID, true)
+	if err != nil || !hidden.Hidden {
+		t.Fatalf("hide: %+v %v", hidden, err)
+	}
+	list, _ := s.ListModels(ctx, false)
+	if len(list) != 1 || !list[0].Hidden {
+		t.Fatalf("hidden model must stay in the default list: %+v", list)
+	}
+	counts, _ := s.Counts(ctx)
+	if counts.Models != 0 {
+		t.Fatalf("hidden model counted in public stats: %+v", counts)
+	}
+
+	archived, err := s.SetModelArchived(ctx, m.ID, true)
+	if err != nil || archived.ArchivedAt == nil {
+		t.Fatalf("archive: %+v %v", archived, err)
+	}
+	list, _ = s.ListModels(ctx, false)
+	if len(list) != 0 {
+		t.Fatalf("archived model leaked into the default list: %+v", list)
+	}
+	list, _ = s.ListModels(ctx, true)
+	if len(list) != 1 || list[0].ArchivedAt == nil {
+		t.Fatalf("includeArchived = %+v", list)
+	}
+
+	restored, err := s.SetModelArchived(ctx, m.ID, false)
+	if err != nil || restored.ArchivedAt != nil {
+		t.Fatalf("restore: %+v %v", restored, err)
+	}
+	shown, err := s.SetModelHidden(ctx, m.ID, false)
+	if err != nil || shown.Hidden {
+		t.Fatalf("show: %+v %v", shown, err)
+	}
+	counts, _ = s.Counts(ctx)
+	if counts.Models != 1 {
+		t.Fatalf("visible model missing from counts: %+v", counts)
+	}
+}
+
+func TestTextDimensionStorageAndCascade(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	text, err := s.CreateDimension(ctx, "Notes", "", 0, true)
+	if err != nil || !text.TextMode {
+		t.Fatalf("create text dimension: %+v %v", text, err)
+	}
+	numeric, err := s.CreateDimension(ctx, "Quality", "", 50, false)
+	if err != nil || numeric.TextMode {
+		t.Fatalf("create numeric dimension: %+v %v", numeric, err)
+	}
+	m, _ := s.CreateModel(ctx, "m", "Model", "", "")
+
+	if err := s.SetDimensionText(ctx, "m", text.ID, "第一行\nsecond line"); err != nil {
+		t.Fatalf("set text: %v", err)
+	}
+	texts, err := s.TextsForModel(ctx, m.ID)
+	if err != nil || texts[text.ID] != "第一行\nsecond line" {
+		t.Fatalf("texts = %+v %v", texts, err)
+	}
+	all, err := s.AllTexts(ctx)
+	if err != nil || len(all) != 1 || all[0].ModelID != m.ID {
+		t.Fatalf("all texts = %+v %v", all, err)
+	}
+
+	if _, err := s.UpsertScore(ctx, "m", text.ID, 8, notePtr("")); !errors.Is(err, ErrTextDimension) {
+		t.Fatalf("score on text dimension = %v, want ErrTextDimension", err)
+	}
+	if err := s.SetDimensionText(ctx, "m", numeric.ID, "wrong"); !errors.Is(err, ErrNumericDimension) {
+		t.Fatalf("text on numeric dimension = %v, want ErrNumericDimension", err)
+	}
+	if err := s.SetDimensionText(ctx, "missing", text.ID, "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("text on missing model = %v, want ErrNotFound", err)
+	}
+	if _, err := s.SetDimensionArchived(ctx, text.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetDimensionText(ctx, "m", text.ID, "late"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("text on archived dimension = %v, want ErrNotFound", err)
+	}
+	if _, err := s.SetDimensionArchived(ctx, text.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetModelArchived(ctx, m.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetDimensionText(ctx, "m", text.ID, "late"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("text on archived model = %v, want ErrNotFound", err)
+	}
+	if _, err := s.SetModelArchived(ctx, m.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetDimensionText(ctx, "m", text.ID, ""); err != nil {
+		t.Fatalf("clear text: %v", err)
+	}
+	texts, _ = s.TextsForModel(ctx, m.ID)
+	if len(texts) != 0 {
+		t.Fatalf("cleared text still stored: %+v", texts)
+	}
+
+	if err := s.SetDimensionText(ctx, "m", text.ID, "cascade"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteDimension(ctx, text.ID); err != nil {
+		t.Fatal(err)
+	}
+	all, _ = s.AllTexts(ctx)
+	if len(all) != 0 {
+		t.Fatalf("dimension cascade left texts: %+v", all)
 	}
 }

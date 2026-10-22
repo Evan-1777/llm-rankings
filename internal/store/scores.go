@@ -71,7 +71,7 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	value = math.Round(value*10) / 10
 
 	var modelID int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE`, modelSlug).Scan(&modelID)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE AND archived_at IS NULL`, modelSlug).Scan(&modelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Score{}, ErrNotFound
 	}
@@ -80,7 +80,8 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	}
 
 	var archived sql.NullString
-	err = s.db.QueryRowContext(ctx, `SELECT archived_at FROM dimensions WHERE id = ?`, dimensionID).Scan(&archived)
+	var textMode bool
+	err = s.db.QueryRowContext(ctx, `SELECT archived_at, text_mode FROM dimensions WHERE id = ?`, dimensionID).Scan(&archived, &textMode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Score{}, ErrNotFound
 	}
@@ -89,6 +90,9 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	}
 	if archived.Valid {
 		return Score{}, ErrArchived
+	}
+	if textMode {
+		return Score{}, ErrTextDimension
 	}
 
 	now := nowStamp()
@@ -121,7 +125,7 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 // not an error so retried multi-request saves can converge.
 func (s *Store) DeleteScore(ctx context.Context, modelSlug string, dimensionID int64) error {
 	var modelID int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE`, modelSlug).Scan(&modelID)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE AND archived_at IS NULL`, modelSlug).Scan(&modelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}

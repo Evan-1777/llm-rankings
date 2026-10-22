@@ -22,6 +22,10 @@ var (
 	ErrConflict = errors.New("conflict")
 	ErrArchived = errors.New("dimension is archived")
 	ErrInvalid  = errors.New("invalid value")
+	// ErrTextDimension means a numeric score was sent to a text dimension.
+	ErrTextDimension = errors.New("dimension stores text")
+	// ErrNumericDimension means text was sent to a numeric dimension.
+	ErrNumericDimension = errors.New("dimension stores numeric scores")
 	// ErrOrderMismatch means a reorder payload is not the current dimension set.
 	ErrOrderMismatch = errors.New("dimension order mismatch")
 )
@@ -171,15 +175,17 @@ func (s *Store) MaxUpdatedAt(ctx context.Context) (*time.Time, error) {
 // Counts returns model, enabled-dimension and scored-model counts.
 func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	var c Counts
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM models`).Scan(&c.Models); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM models WHERE archived_at IS NULL AND hidden = 0`).Scan(&c.Models); err != nil {
 		return c, err
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dimensions WHERE archived_at IS NULL`).Scan(&c.Dimensions); err != nil {
 		return c, err
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT s.model_id)
-		FROM scores s JOIN dimensions d ON d.id = s.dimension_id
-		WHERE d.archived_at IS NULL AND d.weight > 0`).Scan(&c.ScoredModels); err != nil {
+		FROM scores s
+		JOIN dimensions d ON d.id = s.dimension_id
+		JOIN models m ON m.id = s.model_id
+		WHERE d.archived_at IS NULL AND d.weight > 0 AND m.archived_at IS NULL AND m.hidden = 0`).Scan(&c.ScoredModels); err != nil {
 		return c, err
 	}
 	return c, nil

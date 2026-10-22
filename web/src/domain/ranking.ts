@@ -9,6 +9,8 @@ export interface RankRow {
   slug: string;
   name: string;
   vendor: string;
+  /** Hidden models sort after every visible model and never receive a rank. */
+  hidden?: boolean;
   score: number | null;
   coverage: number;
   provisional: boolean;
@@ -123,7 +125,13 @@ export interface SortOptions {
  * without a composite score stay last regardless of direction unless the key
  * and options explicitly let them participate.
  */
-export function sortRows(rows: RankRow[], key: string, dir: SortDir, options: SortOptions = {}): RankRow[] {
+export function sortRows<T extends RankRow>(rows: T[], key: string, dir: SortDir, options: SortOptions = {}): T[] {
+  const visible = rows.filter((row) => !row.hidden);
+  const hidden = rows.filter((row) => row.hidden);
+  return [...sortGroup(visible, key, dir, options), ...sortGroup(hidden, key, dir, options)];
+}
+
+function sortGroup<T extends RankRow>(rows: T[], key: string, dir: SortDir, options: SortOptions): T[] {
   const keepUnscored = options.keepUnscored === true && (key === "model" || key === "coverage");
   const sorted = [...rows];
   sorted.sort((a, b) => {
@@ -147,7 +155,7 @@ export function sortRows(rows: RankRow[], key: string, dir: SortDir, options: So
 }
 
 /** Workbench view sort: requests unscored participation; sortRows keeps it to the model and coverage keys. */
-export function sortWorkbenchRows(rows: RankRow[], key: string, dir: SortDir): RankRow[] {
+export function sortWorkbenchRows<T extends RankRow>(rows: T[], key: string, dir: SortDir): T[] {
   return sortRows(rows, key, dir, { keepUnscored: true });
 }
 
@@ -193,6 +201,7 @@ export function previewRanking(
     result: composite(dimensions, drafts.get(row.slug) ?? {}),
   }));
   computed.sort((a, b) => {
+    if (Boolean(a.row.hidden) !== Boolean(b.row.hidden)) return a.row.hidden ? 1 : -1;
     if ((a.result.score == null) !== (b.result.score == null)) return a.result.score == null ? 1 : -1;
     if (a.result.score != null && b.result.score != null) {
       if (a.result.score !== b.result.score) return b.result.score - a.result.score;
@@ -203,7 +212,7 @@ export function previewRanking(
 
   let rank = 0;
   for (const item of computed) {
-    if (item.result.score == null) continue;
+    if (item.result.score == null || item.row.hidden) continue;
     rank += 1;
     if (item.row.slug === slug) {
       return { ...item.result, rank };

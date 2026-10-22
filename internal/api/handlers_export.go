@@ -12,15 +12,18 @@ type exportResponse struct {
 	Dimensions []dimensionResponse `json:"dimensions"`
 	Models     []exportModel       `json:"models"`
 	Scores     []exportScore       `json:"scores"`
+	Texts      []exportText        `json:"texts"`
 }
 
 type exportModel struct {
-	Slug      string `json:"slug"`
-	Name      string `json:"name"`
-	Vendor    string `json:"vendor"`
-	Notes     string `json:"notes"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	Slug       string  `json:"slug"`
+	Name       string  `json:"name"`
+	Vendor     string  `json:"vendor"`
+	Notes      string  `json:"notes"`
+	Hidden     bool    `json:"hidden"`
+	ArchivedAt *string `json:"archivedAt"`
+	CreatedAt  string  `json:"createdAt"`
+	UpdatedAt  string  `json:"updatedAt"`
 }
 
 type exportScore struct {
@@ -31,6 +34,13 @@ type exportScore struct {
 	UpdatedAt   string  `json:"updatedAt"`
 }
 
+type exportText struct {
+	ModelSlug   string `json:"modelSlug"`
+	DimensionID int64  `json:"dimensionId"`
+	Content     string `json:"content"`
+	UpdatedAt   string `json:"updatedAt"`
+}
+
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	dims, err := s.store.ListDimensions(ctx, true)
@@ -38,12 +48,17 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
-	models, err := s.store.ListModels(ctx)
+	models, err := s.store.ListModels(ctx, true)
 	if err != nil {
 		s.internalError(w, err)
 		return
 	}
 	scores, err := s.store.AllScores(ctx)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	texts, err := s.store.AllTexts(ctx)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -58,12 +73,14 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	for _, m := range models {
 		slugByID[m.ID] = m.Slug
 		exportModels = append(exportModels, exportModel{
-			Slug:      m.Slug,
-			Name:      m.Name,
-			Vendor:    m.Vendor,
-			Notes:     m.Notes,
-			CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt: m.UpdatedAt.UTC().Format(time.RFC3339),
+			Slug:       m.Slug,
+			Name:       m.Name,
+			Vendor:     m.Vendor,
+			Notes:      m.Notes,
+			Hidden:     m.Hidden,
+			ArchivedAt: stampString(m.ArchivedAt),
+			CreatedAt:  m.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:  m.UpdatedAt.UTC().Format(time.RFC3339),
 		})
 	}
 	exportScores := make([]exportScore, 0, len(scores))
@@ -77,6 +94,16 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	exportTexts := make([]exportText, 0, len(texts))
+	for _, text := range texts {
+		exportTexts = append(exportTexts, exportText{
+			ModelSlug:   slugByID[text.ModelID],
+			DimensionID: text.DimensionID,
+			Content:     text.Content,
+			UpdatedAt:   text.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
 	now := s.now().UTC()
 	payload, err := json.MarshalIndent(exportResponse{
 		Version:    1,
@@ -84,6 +111,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		Dimensions: dimensions,
 		Models:     exportModels,
 		Scores:     exportScores,
+		Texts:      exportTexts,
 	}, "", "  ")
 	if err != nil {
 		s.internalError(w, err)

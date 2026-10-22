@@ -21,7 +21,7 @@ import styles from "./Compare.module.css";
 
 export function Compare() {
   useDocumentTitle("模型对比");
-  const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(signal), []);
+  const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
   const { scorePercentageMode } = useDisplayPreferences();
   const toast = useToast();

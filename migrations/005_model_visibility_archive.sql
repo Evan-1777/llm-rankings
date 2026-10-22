@@ -1,0 +1,3 @@
+ALTER TABLE models ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1));
+
+ALTER TABLE models ADD COLUMN archived_at TEXT;

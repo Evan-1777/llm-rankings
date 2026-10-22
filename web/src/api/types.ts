@@ -9,6 +9,7 @@ export interface Dimension {
   name: string;
   description: string;
   weight: number;
+  textMode: boolean;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +33,7 @@ export interface RankingModel {
   slug: string;
   name: string;
   vendor: string;
+  hidden: boolean;
   score: number | null;
   coverage: number;
   provisional: boolean;
@@ -51,6 +53,8 @@ export interface ModelSummary {
   name: string;
   vendor: string;
   notes?: string;
+  hidden: boolean;
+  archivedAt: string | null;
   /** Every stored score, including archived and zero-weight dimensions. */
   scoreCount: number;
   /** Scores on enabled dimensions with a positive weight. */
@@ -62,7 +66,9 @@ export interface ModelDimension {
   id: number;
   name: string;
   weight: number;
+  textMode: boolean;
   value: number | null;
+  text?: string;
   note?: string;
 }
 
@@ -71,6 +77,7 @@ export interface ModelDetail {
   name: string;
   vendor: string;
   notes?: string;
+  hidden: boolean;
   score: number | null;
   coverage: number;
   provisional: boolean;
@@ -85,6 +92,7 @@ export interface DimensionInput {
   name: string;
   description: string;
   weight: number;
+  textMode: boolean;
 }
 
 export interface ModelInput {
@@ -98,6 +106,7 @@ export interface ModelPatch {
   name?: string;
   vendor?: string;
   notes?: string;
+  hidden?: boolean;
 }
 
 export interface DisplaySettings {

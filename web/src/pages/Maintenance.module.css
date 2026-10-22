@@ -38,19 +38,6 @@
   color: var(--ink-3);
 }
 
-.login {
-  min-width: 200px;
-  margin-top: 40px;
-  padding-top: 18px;
-  border-top: 1px solid var(--ink);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-}
-
-.login:hover {
-  color: var(--signal);
-}
-
 @media (max-width: 760px) {
   .mark {
     width: 76px;

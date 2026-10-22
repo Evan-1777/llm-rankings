@@ -19,6 +19,8 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [weight, setWeight] = useState("0");
+  const [excluded, setExcluded] = useState(false);
+  const [textMode, setTextMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -29,6 +31,8 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     setName(dimension?.name ?? "");
     setDescription(dimension?.description ?? "");
     setWeight(String(dimension?.weight ?? 0));
+    setExcluded(dimension ? dimension.weight === 0 : false);
+    setTextMode(dimension?.textMode ?? false);
     setErrors({});
     setSaveError("");
   }, [open, dimension]);
@@ -37,8 +41,10 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     const next: Record<string, string> = {};
     if (name.trim().length < 1 || name.trim().length > 40) next.name = "名称需为 1–40 个字符";
     if (description.length > 500) next.description = "说明不能超过 500 个字符";
-    const numeric = Number(weight);
-    if (!Number.isInteger(numeric) || numeric < 0 || numeric > 100) next.weight = "权重需为 0–100 的整数";
+    if (!excluded) {
+      const numeric = Number(weight);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 100) next.weight = "参与评分时权重需为 1–100 的整数";
+    }
     return next;
   };
 
@@ -49,7 +55,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     if (Object.keys(nextErrors).length > 0) return;
     setSaving(true);
     setSaveError("");
-    const input = { name: name.trim(), description, weight: Number(weight) };
+    const input = { name: name.trim(), description, weight: excluded ? 0 : Number(weight), textMode: excluded && textMode };
     try {
       if (dimension) {
         await api.updateDimension(dimension.id, input);
@@ -97,19 +103,48 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
               error={errors.description}
               onChange={(event) => setDescription(event.target.value)}
             />
+            <label className={ui.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={excluded}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setExcluded(next);
+                  if (next) {
+                    setWeight("0");
+                  } else {
+                    setTextMode(false);
+                  }
+                }}
+              />
+              不纳入评分
+            </label>
+            <p className={ui.hint}>数值仍显示在排行与详情，但不计入综合分与覆盖率。</p>
             <TextField
               id="dimension-weight"
               label="权重"
               type="number"
               inputMode="numeric"
-              min="0"
+              min="1"
               max="100"
               step="1"
-              value={weight}
+              value={excluded ? "0" : weight}
+              disabled={excluded}
               error={errors.weight}
-              hint="0–100 的整数；权重 0 的维度不参与排行，也不进入评分弹窗。"
+              hint={excluded ? "不纳入评分的维度权重固定为 0。" : "1–100 的整数。"}
               onChange={(event) => setWeight(event.target.value)}
             />
+            <label className={ui.checkboxRow}>
+              <input type="checkbox" checked={textMode} disabled={!excluded} onChange={(event) => setTextMode(event.target.checked)} />
+              填入文字
+            </label>
+            <p className={ui.hint}>
+              {textMode
+                ? "用一段文字代替评分，不参与任何计算；在模型评分弹窗中填写。"
+                : excluded
+                  ? "仍为不纳入评分；需要参与排行时取消不纳入并设置权重。"
+                  : "文字仅在「不纳入评分」时可启用。"}
+            </p>
             {saveError ? (
               <p className={ui.error} role="alert">
                 {saveError}

@@ -40,7 +40,7 @@ export function Settings() {
   const orderLock = useRef(false);
   const pendingOrderReload = useRef(false);
   const { data, loading, error, reload } = useAsyncData(async (signal) => {
-    const [dimensions, models] = await Promise.all([api.dimensions(true, signal), api.models(signal)]);
+    const [dimensions, models] = await Promise.all([api.dimensions(true, signal), api.models(true, signal)]);
     if (pendingOrderReload.current) {
       pendingOrderReload.current = false;
       orderLock.current = false;
@@ -79,6 +79,8 @@ export function Settings() {
   const tab = resolveTab(params.get("tab"));
   const dimensions = data?.dimensions ?? [];
   const models = data?.models ?? [];
+  const activeModels = models.filter((model) => !model.archivedAt);
+  const archivedModels = models.filter((model) => model.archivedAt);
   const activeDimensions = dimensions.filter((dimension) => !dimension.archivedAt);
   const archivedDimensions = dimensions.filter((dimension) => dimension.archivedAt);
   const scoreableDimensions = activeDimensions.filter((dimension) => dimension.weight > 0);
@@ -314,7 +316,7 @@ export function Settings() {
   const deleteModel = async (model: ModelSummary) => {
     const confirmed = await confirm({
       title: `删除模型「${model.name}」？`,
-      body: "该模型及其全部评分会被永久删除，无法恢复。",
+      body: "该模型及其全部评分与文字记录会被永久删除，无法恢复。",
       confirmLabel: "永久删除",
       danger: true,
     });
@@ -322,6 +324,26 @@ export function Settings() {
     try {
       await api.deleteModel(model.slug);
       toast("模型已删除");
+      refreshAll();
+    } catch (caught) {
+      toast(errorMessage(caught), "error");
+    }
+  };
+
+  const toggleModelHidden = async (model: ModelSummary) => {
+    try {
+      await api.setModelHidden(model.slug, !model.hidden);
+      toast(model.hidden ? "模型已显示" : "模型已隐藏");
+      refreshAll();
+    } catch (caught) {
+      toast(errorMessage(caught), "error");
+    }
+  };
+
+  const archiveModel = async (model: ModelSummary) => {
+    try {
+      await api.setModelArchived(model.slug, !model.archivedAt);
+      toast(model.archivedAt ? "模型已恢复" : "模型已归档");
       refreshAll();
     } catch (caught) {
       toast(errorMessage(caught), "error");
@@ -433,8 +455,10 @@ export function Settings() {
                 <span className={styles.status}>
                   {dimension.archivedAt ? (
                     <span className={ui.tag}>已归档</span>
+                  ) : dimension.textMode ? (
+                    <span className={`${styles.statusTag} ${styles.statusIdle}`}>文字</span>
                   ) : dimension.weight === 0 ? (
-                    <span className={`${styles.statusTag} ${styles.statusIdle}`}>不参与</span>
+                    <span className={`${styles.statusTag} ${styles.statusIdle}`}>不纳入</span>
                   ) : (
                     <span className={styles.statusLive}>参与排行</span>
                   )}
@@ -467,7 +491,9 @@ export function Settings() {
         <div className={styles.panelHead}>
           <div className={styles.panelIntro}>
             <p className={ui.sectionLabel}>模型</p>
-            <span className={ui.sectionMeta}>{models.length} 个模型</span>
+            <span className={ui.sectionMeta}>
+              {activeModels.length} 启用 / {archivedModels.length} 归档
+            </span>
           </div>
           <Button variant="primary" onClick={openNewModel}>
             <Icon name="plus" size={14} />
@@ -475,10 +501,13 @@ export function Settings() {
           </Button>
         </div>
 
-        {models.length === 0 ? (
-          <EmptyState title="尚未创建模型" text="模型档案不含评分；评分仍由排行、详情或工作台的评分弹窗写入。">
+        {activeModels.length === 0 ? (
+          <EmptyState
+            title={archivedModels.length > 0 ? "没有启用的模型" : "尚未创建模型"}
+            text="模型档案不含评分；评分仍由排行、详情或工作台的评分弹窗写入。"
+          >
             <Button variant="primary" onClick={openNewModel}>
-              创建第一个模型
+              {archivedModels.length > 0 ? "新增模型" : "创建第一个模型"}
             </Button>
           </EmptyState>
         ) : (
@@ -490,11 +519,14 @@ export function Settings() {
               <span>完整度</span>
               <span className={styles.actionsHead}>操作</span>
             </div>
-            {models.map((model, index) => (
-              <div className={`${styles.modelRow}`} key={model.slug}>
+            {activeModels.map((model, index) => (
+              <div className={styles.modelRow} key={model.slug}>
                 <span className={styles.index}>{String(index + 1).padStart(2, "0")}</span>
                 <div className={styles.nameBlock}>
-                  <span className={styles.itemName}>{model.name}</span>
+                  <span className={styles.nameLine}>
+                    <span className={styles.itemName}>{model.name}</span>
+                    {model.hidden ? <span className={`${styles.statusTag} ${styles.statusIdle}`}>已隐藏</span> : null}
+                  </span>
                   <span className={styles.itemMeta}>{model.vendor || "—"}</span>
                 </div>
                 <span className={styles.slug}>{model.slug}</span>
@@ -508,6 +540,17 @@ export function Settings() {
                   <IconButton label={`编辑模型：${model.name}`} onClick={() => openModel(model)}>
                     <Icon name="edit" />
                   </IconButton>
+                  <IconButton
+                    label={model.hidden ? `显示模型：${model.name}` : `隐藏模型：${model.name}`}
+                    active={model.hidden}
+                    aria-pressed={model.hidden}
+                    onClick={() => void toggleModelHidden(model)}
+                  >
+                    <Icon name={model.hidden ? "eyeOff" : "eye"} />
+                  </IconButton>
+                  <IconButton label={`归档模型：${model.name}`} onClick={() => void archiveModel(model)}>
+                    <Icon name="archive" />
+                  </IconButton>
                   <IconButton label={`删除模型：${model.name}`} danger onClick={() => void deleteModel(model)}>
                     <Icon name="trash" />
                   </IconButton>
@@ -516,6 +559,37 @@ export function Settings() {
             ))}
           </div>
         )}
+
+        {archivedModels.length > 0 ? (
+          <section className={styles.archiveSection} aria-label="已归档模型">
+            <div className={styles.archiveHead}>
+              <p className={ui.sectionLabel}>已归档</p>
+              <span className={ui.sectionMeta}>{archivedModels.length} 个模型</span>
+            </div>
+            <div className={styles.list}>
+              {archivedModels.map((model) => (
+                <div className={styles.archivedRow} key={model.slug}>
+                  <div className={styles.nameBlock}>
+                    <span className={styles.itemName}>{model.name}</span>
+                    <span className={styles.itemMeta}>
+                      {model.vendor || "—"}
+                      {model.archivedAt ? ` · 归档于 ${new Date(model.archivedAt).toLocaleDateString("zh-CN")}` : ""}
+                    </span>
+                  </div>
+                  <span className={styles.slug}>{model.slug}</span>
+                  <div className={styles.rowActions}>
+                    <IconButton label={`恢复模型：${model.name}`} onClick={() => void archiveModel(model)}>
+                      <Icon name="restore" />
+                    </IconButton>
+                    <IconButton label={`删除模型：${model.name}`} danger onClick={() => void deleteModel(model)}>
+                      <Icon name="trash" />
+                    </IconButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </section>
     );
   } else if (tab === "display") {
@@ -628,7 +702,7 @@ export function Settings() {
             </span>
           </div>
           <div className={ui.statsBottom}>
-            <span>{models.length} 个模型</span>
+            <span>{activeModels.length} 个模型</span>
             <span>{totalScores} 条评分</span>
           </div>
         </div>
@@ -665,7 +739,7 @@ export function Settings() {
         onClose={() => setDimensionOpen(false)}
         onSaved={refreshAll}
       />
-      <ModelDialog open={modelOpen} model={modelEdit} models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
+      <ModelDialog open={modelOpen} model={modelEdit} models={activeModels} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
 
       <p className={styles.footerNote}>
         维度与模型的永久删除不可恢复。需要留存时先导出 JSON。 <Link to="/">返回排行</Link>

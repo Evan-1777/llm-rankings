@@ -227,3 +227,34 @@ test("composite and preview stay stable across display order", () => {
   assert.equal(alpha.rank, 1);
   assert.equal(zeta.rank, 2);
 });
+test("hidden rows stay last in every sort and never take a rank", () => {
+  const rows: RankRow[] = [
+    { ...row("hidden", 10, 1, null, { "1": 10 }), hidden: true },
+    row("a", 9, 1, 1, { "1": 9 }),
+    row("b", 8, 1, 2, { "1": 8 }),
+  ];
+  assert.deepEqual(sortRows(rows, "score", "desc").map((r) => r.slug), ["a", "b", "hidden"]);
+  assert.deepEqual(sortRows(rows, "score", "asc").map((r) => r.slug), ["b", "a", "hidden"]);
+  assert.deepEqual(sortRows(rows, "model", "asc").map((r) => r.slug), ["a", "b", "hidden"]);
+  assert.deepEqual(sortWorkbenchRows(rows, "model", "desc").map((r) => r.slug), ["b", "a", "hidden"]);
+});
+
+test("preview keeps ranks contiguous for visible rows and empty for hidden", () => {
+  const dims = [{ id: 1, name: "d", weight: 50 }];
+  const rows: RankRow[] = [
+    { ...row("hidden", 10, 1, null, { "1": 10 }), hidden: true },
+    row("a", 9, 1, 1, { "1": 9 }),
+    row("b", 8, 1, 2, { "1": 8 }),
+  ];
+  const first = previewRanking(rows, dims, "a", { 1: 9 });
+  const second = previewRanking(rows, dims, "b", { 1: 8 });
+  const hidden = previewRanking(rows, dims, "hidden", { 1: 10 });
+  assert.equal(first.rank, 1);
+  assert.equal(second.rank, 2);
+  assert.equal(hidden.rank, null);
+  assert.equal(hidden.score, 10);
+
+  const merged = previewRanking([...rows, { ...row("new", null, 0, null, {}), hidden: true }], dims, "new", { 1: 7 });
+  assert.equal(merged.rank, null);
+  assert.equal(merged.score, 7);
+});

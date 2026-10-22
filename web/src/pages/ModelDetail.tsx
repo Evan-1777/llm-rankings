@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
+import type { RankingModel } from "../api/types";
 import { Button } from "../components/Button";
 import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
@@ -24,21 +25,25 @@ export function ModelDetail() {
   const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
   const [editOpen, setEditOpen] = useState(false);
   const { data, loading, error, reload } = useAsyncData(async (signal) => {
-    const [detail, rankings] = await Promise.all([api.model(slug, signal), api.rankings(signal)]);
+    const [detail, rankings] = await Promise.all([api.model(slug, signal), api.rankings(false, signal)]);
     return { detail, rankings };
   }, [slug]);
   useDocumentTitle(data?.detail.name ?? "模型详情");
+  const numericDimensionIds = useMemo(
+    () => (data?.detail.dimensions ?? []).filter((dimension) => !dimension.textMode).map((dimension) => dimension.id),
+    [data?.detail.dimensions],
+  );
   const scoreRanges = useMemo(
-    () => dimensionScoreRanges(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
-    [data?.rankings.models, data?.detail.dimensions],
+    () => dimensionScoreRanges(data?.rankings.models ?? [], numericDimensionIds),
+    [data?.rankings.models, numericDimensionIds],
   );
   const compositeRange = useMemo(
     () => scoreRange((data?.rankings.models ?? []).map((model) => model.score)),
     [data?.rankings.models],
   );
   const ranksByDimension = useMemo(
-    () => dimensionRanks(data?.rankings.models ?? [], data?.detail.dimensions.map((dimension) => dimension.id) ?? []),
-    [data?.rankings.models, data?.detail.dimensions],
+    () => dimensionRanks(data?.rankings.models ?? [], numericDimensionIds),
+    [data?.rankings.models, numericDimensionIds],
   );
 
   const refreshAll = () => {
@@ -80,7 +85,25 @@ export function ModelDetail() {
   const ordered = rankings.models;
   const index = ordered.findIndex((model) => model.slug === detail.slug);
   const nextModel = index >= 0 && ordered.length > 1 ? ordered[(index + 1) % ordered.length] : null;
-  const dimensionCount = detail.dimensions.length;
+  const numericDimensions = detail.dimensions.filter((dimension) => !dimension.textMode);
+  const textDimensions = detail.dimensions.filter((dimension) => dimension.textMode);
+  const storedRow = ordered.find((model) => model.slug === detail.slug);
+  const scoreModel: RankingModel =
+    storedRow ?? {
+      slug: detail.slug,
+      name: detail.name,
+      vendor: detail.vendor,
+      hidden: detail.hidden,
+      score: detail.score,
+      coverage: detail.coverage,
+      provisional: detail.provisional,
+      rank: detail.rank,
+      scores: Object.fromEntries(
+        numericDimensions
+          .filter((dimension) => dimension.value != null)
+          .map((dimension) => [String(dimension.id), dimension.value as number]),
+      ),
+    };
 
   return (
     <div className="shell page-enter">
@@ -126,10 +149,12 @@ export function ModelDetail() {
           ) : null}
         </div>
         <div className={ui.actions}>
-          <Button onClick={() => navigate(`/compare?models=${detail.slug}`)}>
-            <Icon name="compare" size={14} />
-            对比
-          </Button>
+          {!detail.hidden ? (
+            <Button onClick={() => navigate(`/compare?models=${detail.slug}`)}>
+              <Icon name="compare" size={14} />
+              对比
+            </Button>
+          ) : null}
           {session.authenticated ? (
             <Button variant="primary" onClick={() => setEditOpen(true)}>
               <Icon name={detail.score != null ? "edit" : "plus"} size={14} />
@@ -158,7 +183,7 @@ export function ModelDetail() {
         </span>
       </div>
 
-      {dimensionCount === 0 ? (
+      {numericDimensions.length === 0 && textDimensions.length === 0 ? (
         <EmptyState
           title="尚未设置维度权重"
           text={session.authenticated ? "为维度设置大于 0 的权重后，模型评分会在这里展开。" : "管理员尚未启用任何维度。"}
@@ -170,61 +195,84 @@ export function ModelDetail() {
           ) : null}
         </EmptyState>
       ) : (
-        <div className={styles.tableWrap}>
-          <table className={styles.dimTable}>
-            <caption className="sr-only">{detail.name} 的维度得分与同维度排名</caption>
-            <thead>
-              <tr>
-                <th scope="col">维度</th>
-                <th scope="col">权重</th>
-                <th scope="col" className={styles.num}>
-                  {scorePercentageMode ? "强度" : "得分"}
-                </th>
-                <th scope="col" className={`${styles.rankCol} ${styles.num}`}>
-                  维度排名
-                </th>
-                <th scope="col" className={styles.barCol}>
-                  相对
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.dimensions.map((dimension) => {
-                const max = dimensionMax(rankings.models, dimension.id);
-                const percent = scorePercentageMode ? strengthPercentile(dimension.value, scoreRanges.get(dimension.id)) : null;
-                const ranked = ranksByDimension.get(dimension.id);
-                const rank = ranked?.get(detail.slug) ?? null;
-                return (
-                  <tr key={dimension.id}>
-                    <td className={styles.dimName}>{dimension.name}</td>
-                    <td className={styles.weight}>{dimension.weight}</td>
-                    <td className={`${styles.score} ${styles.num}`}>
-                      <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} />
-                    </td>
-                    <td className={`${styles.rankCell} ${styles.num}`}>
-                      {rank == null ? (
-                        <span className={styles.rankMissing}>—</span>
-                      ) : (
-                        <span className={styles.rank}>
-                          <b>{rankLabel(rank)}</b>
-                          <span className={styles.rankTotal}>/ {rankLabel(ranked?.size ?? 0)}</span>
-                        </span>
-                      )}
-                    </td>
-                    <td className={styles.barCol}>
-                      <span className={styles.barTrack} aria-hidden="true">
-                        <span
-                          className={styles.barFill}
-                          style={{ width: `${scorePercentageMode ? (percent ?? 0) : barWidth(dimension.value, max)}%` }}
-                        />
-                      </span>
-                    </td>
+        <>
+          {numericDimensions.length > 0 ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.dimTable}>
+                <caption className="sr-only">{detail.name} 的维度得分与同维度排名</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">维度</th>
+                    <th scope="col">权重</th>
+                    <th scope="col" className={styles.num}>
+                      {scorePercentageMode ? "强度" : "得分"}
+                    </th>
+                    <th scope="col" className={`${styles.rankCol} ${styles.num}`}>
+                      维度排名
+                    </th>
+                    <th scope="col" className={styles.barCol}>
+                      相对
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {numericDimensions.map((dimension) => {
+                    const max = dimensionMax(rankings.models, dimension.id);
+                    const percent = scorePercentageMode ? strengthPercentile(dimension.value, scoreRanges.get(dimension.id)) : null;
+                    const ranked = ranksByDimension.get(dimension.id);
+                    const rank = ranked?.get(detail.slug) ?? null;
+                    return (
+                      <tr key={dimension.id}>
+                        <td className={styles.dimName}>{dimension.name}</td>
+                        <td className={styles.weight}>{dimension.weight}</td>
+                        <td className={`${styles.score} ${styles.num}`}>
+                          <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} />
+                        </td>
+                        <td className={`${styles.rankCell} ${styles.num}`}>
+                          {rank == null ? (
+                            <span className={styles.rankMissing}>—</span>
+                          ) : (
+                            <span className={styles.rank}>
+                              <b>{rankLabel(rank)}</b>
+                              <span className={styles.rankTotal}>/ {rankLabel(ranked?.size ?? 0)}</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className={styles.barCol}>
+                          <span className={styles.barTrack} aria-hidden="true">
+                            <span
+                              className={styles.barFill}
+                              style={{ width: `${scorePercentageMode ? (percent ?? 0) : barWidth(dimension.value, max)}%` }}
+                            />
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                      })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {textDimensions.length > 0 ? (
+            <section className={styles.textSection} aria-label="文字维度">
+              <div className={ui.sectionHead}>
+                <p className={ui.sectionLabel}>文字维度</p>
+              </div>
+              <div className={styles.textList}>
+                {textDimensions.map((dimension) => (
+                  <article className={styles.textRow} key={dimension.id}>
+                    <div className={styles.textHead}>
+                      <span className={styles.textName}>{dimension.name}</span>
+                      <span className={styles.weight}>权重 {dimension.weight}</span>
+                    </div>
+                    <p className={styles.textContent}>{dimension.text?.trim() ? dimension.text : "—"}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
       )}
 
       {session.authenticated ? (
@@ -238,7 +286,7 @@ export function ModelDetail() {
       ) : null}
 
       {editOpen ? (
-        <ScoreDialog open model={rankings.models.find((model) => model.slug === detail.slug) ?? null} rankings={rankings} onClose={() => setEditOpen(false)} onSaved={refreshAll} />
+        <ScoreDialog open model={scoreModel} rankings={rankings} onClose={() => setEditOpen(false)} onSaved={refreshAll} />
       ) : null}
     </div>
   );

@@ -10,7 +10,7 @@ const dimensions: RankingDimension[] = [
 ];
 
 function model(slug: string, scores: Record<string, number>): RankingModel {
-  return { slug, name: slug, vendor: "", score: 8, coverage: 1, provisional: false, rank: 1, scores };
+  return { slug, name: slug, vendor: "", hidden: false, score: 8, coverage: 1, provisional: false, rank: 1, scores };
 }
 
 test("draft prefills one decimal and keeps missing cells empty", () => {
