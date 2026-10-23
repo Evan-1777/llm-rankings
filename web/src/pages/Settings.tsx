@@ -53,7 +53,9 @@ export function Settings() {
     dimensionScoreEmphasis,
     setDimensionScoreEmphasis,
     scorePercentageMode,
+    scorePercentageMaxMode,
     setScorePercentageMode,
+    setScorePercentageMaxMode,
     maintenanceMode,
     setMaintenanceMode,
     loading: displayLoading,
@@ -604,7 +606,7 @@ export function Settings() {
         <label className={styles.preference}>
           <span className={styles.preferenceCopy}>
             <span className={styles.preferenceLabel}>百分比模式</span>
-            <span className={styles.preferenceHint}>所有设备 · 100% = 最强 · 1% = 最弱</span>
+            <span className={styles.preferenceHint}>所有设备 · 综合分与维度分显示为百分比</span>
           </span>
           <span className={ui.checkboxRow}>
             <input
@@ -614,6 +616,23 @@ export function Settings() {
               onChange={(event) => void setScorePercentageMode(event.target.checked)}
             />
             {scorePercentageMode ? "开启" : "关闭"}
+          </span>
+        </label>
+        <label className={styles.preference}>
+          <span className={styles.preferenceCopy}>
+            <span className={styles.preferenceLabel}>最高分占比</span>
+            <span className={styles.preferenceHint}>
+              {scorePercentageMode ? "所有设备 · 得分 ÷ 同项最高分 · 关闭时按分差（1%–100%）" : "所有设备 · 需先开启百分比模式"}
+            </span>
+          </span>
+          <span className={ui.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={scorePercentageMaxMode}
+              disabled={displayLoading || displaySaving || !scorePercentageMode}
+              onChange={(event) => void setScorePercentageMaxMode(event.target.checked)}
+            />
+            {scorePercentageMaxMode ? "开启" : "关闭"}
           </span>
         </label>
         <label className={styles.preference}>

@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   dimensionScoreRanges,
+  formatMaxSharePercent,
   formatStrengthPercentile,
+  maxSharePercent,
   scoreEmphasisTone,
+  scoreMax,
   scoreRange,
   strengthPercentile,
   type ScoreRow,
@@ -90,6 +93,35 @@ test("rounding never disguises a non-extreme score as 1% or 100%", () => {
   assert.equal(formatStrengthPercentile(5, { min: 0, max: 10 }), "50.5%");
   assert.equal(formatStrengthPercentile(10, { min: 0, max: 10 }), "100%");
   assert.equal(formatStrengthPercentile(0, { min: 0, max: 10 }), "1%");
+});
+
+test("scoreMax keeps the highest valid value and treats an empty set as zero", () => {
+  assert.equal(scoreMax([null, undefined, -1, Number.NaN, Number.POSITIVE_INFINITY, 0, 9, 12.5]), 12.5);
+  assert.equal(scoreMax([]), 0);
+  assert.equal(scoreMax([0, 0]), 0);
+});
+
+test("max share maps the highest score to 100 and keeps a real zero", () => {
+  close(maxSharePercent(9, 10), 90);
+  close(maxSharePercent(0, 10), 0);
+  close(maxSharePercent(7.5, 7.5), 100);
+  close(maxSharePercent(12.5, 25), 50);
+  assert.equal(maxSharePercent(5, 0), null);
+  assert.equal(maxSharePercent(5, null), null);
+  assert.equal(maxSharePercent(-1, 10), null);
+  assert.equal(maxSharePercent(Number.NaN, 10), null);
+  assert.equal(formatMaxSharePercent(9, 10), "90%");
+  assert.equal(formatMaxSharePercent(0, 10), "0%");
+  assert.equal(formatMaxSharePercent(7.5, 7.5), "100%");
+  assert.equal(formatMaxSharePercent(5, 0), "—");
+});
+
+test("max share rounding keeps non-extremes off the endpoints", () => {
+  assert.equal(formatMaxSharePercent(9.99, 10), "99.9%");
+  assert.equal(formatMaxSharePercent(0.01, 10), "0.1%");
+  assert.equal(formatMaxSharePercent(8.75, 10), "87.5%");
+  assert.equal(formatMaxSharePercent(Number.MAX_VALUE, Number.MAX_VALUE), "100%");
+  assert.equal(formatMaxSharePercent(1, Number.MAX_VALUE), "0.1%");
 });
 
 test("tone follows the real score position, not the strength percentile", () => {

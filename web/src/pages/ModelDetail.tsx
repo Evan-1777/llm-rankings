@@ -11,7 +11,7 @@ import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
 import { barWidth, dimensionMax, dimensionRanks, formatPercent, formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatStrengthPercentile, scoreRange, strengthPercentile } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatMaxSharePercent, formatStrengthPercentile, scoreMax, scoreRange, strengthPercentile } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -40,7 +40,7 @@ export function ModelDetail() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
   const session = useSession();
-  const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
+  const { dimensionScoreEmphasis, scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
   const [editOpen, setEditOpen] = useState(false);
   const { data, loading, error, reload } = useAsyncData(async (signal) => {
     const [detail, rankings] = await Promise.all([api.model(slug, signal), api.rankings(false, signal)]);
@@ -61,6 +61,7 @@ export function ModelDetail() {
     [displayModels, numericDimensionIds],
   );
   const compositeRange = useMemo(() => scoreRange(displayModels.map((model) => model.score)), [displayModels]);
+  const compositeMax = useMemo(() => scoreMax(displayModels.map((model) => model.score)), [displayModels]);
   const ranksByDimension = useMemo(
     () => dimensionRanks(data?.rankings.models ?? [], numericDimensionIds),
     [data?.rankings.models, numericDimensionIds],
@@ -116,8 +117,14 @@ export function ModelDetail() {
       <PageHeading kicker={`${detail.vendor || "模型"} / 模型详情`} title={detail.name} titleClassName={styles.title}>
         <div className={styles.headSide}>
           <div className={styles.scoreLine}>
-            <span>{scorePercentageMode ? "综合强度" : "综合分"}</span>
-            <strong>{scorePercentageMode ? formatStrengthPercentile(detail.score, compositeRange) : formatScore(detail.score)}</strong>
+            <span>{scorePercentageMode ? (scorePercentageMaxMode ? "综合占比" : "综合强度") : "综合分"}</span>
+            <strong>
+              {scorePercentageMode
+                ? scorePercentageMaxMode
+                  ? formatMaxSharePercent(detail.score, compositeMax)
+                  : formatStrengthPercentile(detail.score, compositeRange)
+                : formatScore(detail.score)}
+            </strong>
           </div>
           <div className={styles.facts}>
             <div>
@@ -175,7 +182,9 @@ export function ModelDetail() {
         <span className={`${styles.sectionNotes} ${styles.hideMobile}`}>
           <span className={ui.sectionMeta}>
             {scorePercentageMode
-              ? "相对强度 / 100% = 最强，1% = 最弱 / 相对条越强越长"
+              ? scorePercentageMaxMode
+                ? "最高分占比 / 100% = 同项最高分 / 相对条越强越长"
+                : "相对强度 / 100% = 最强，1% = 最弱 / 相对条越强越长"
               : "相对条按最高分归一 / 名次按同维度已评分模型"}
           </span>
           {dimensionScoreEmphasis ? (
@@ -211,7 +220,7 @@ export function ModelDetail() {
                     <th scope="col">维度</th>
                     <th scope="col">权重</th>
                     <th scope="col" className={styles.num}>
-                      {scorePercentageMode ? "强度" : "得分"}
+                      {scorePercentageMode ? (scorePercentageMaxMode ? "占比" : "强度") : "得分"}
                     </th>
                     <th scope="col" className={`${styles.rankCol} ${styles.num}`}>
                       维度排名
@@ -224,7 +233,10 @@ export function ModelDetail() {
                 <tbody>
                   {numericDimensions.map((dimension) => {
                     const max = dimensionMax(displayModels, dimension.id);
-                    const percent = scorePercentageMode ? strengthPercentile(dimension.value, scoreRanges.get(dimension.id)) : null;
+                    const percent =
+                      scorePercentageMode && !scorePercentageMaxMode
+                        ? strengthPercentile(dimension.value, scoreRanges.get(dimension.id))
+                        : null;
                     const ranked = ranksByDimension.get(dimension.id);
                     const rank = ranked?.get(detail.slug) ?? null;
                     return (
@@ -232,7 +244,7 @@ export function ModelDetail() {
                         <td className={styles.dimName}>{dimension.name}</td>
                         <td className={styles.weight}>{dimension.weight}</td>
                         <td className={`${styles.score} ${styles.num}`}>
-                          <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} />
+                          <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} max={max} />
                         </td>
                         <td className={`${styles.rankCell} ${styles.num}`}>
                           {rank == null ? (
@@ -248,7 +260,7 @@ export function ModelDetail() {
                           <span className={styles.barTrack} aria-hidden="true">
                             <span
                               className={styles.barFill}
-                              style={{ width: `${scorePercentageMode ? (percent ?? 0) : barWidth(dimension.value, max)}%` }}
+                              style={{ width: `${scorePercentageMode && !scorePercentageMaxMode ? (percent ?? 0) : barWidth(dimension.value, max)}%` }}
                             />
                           </span>
                         </td>

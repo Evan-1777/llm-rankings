@@ -120,6 +120,7 @@ export interface ModelPatch {
 
 export interface DisplaySettings {
   scorePercentageMode: boolean;
+  scorePercentageMaxMode: boolean;
   maintenanceMode: boolean;
 }
 

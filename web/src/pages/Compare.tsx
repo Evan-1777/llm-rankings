@@ -10,9 +10,9 @@ import { PageHeading } from "../components/PageHeading";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { formatScore } from "../domain/ranking";
+import { dimensionMax, formatScore } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatStrengthPercentile, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatMaxSharePercent, formatStrengthPercentile, scoreMax, scoreRange } from "../lib/scoreEmphasis";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -23,7 +23,7 @@ export function Compare() {
   useDocumentTitle("模型对比");
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
-  const { scorePercentageMode } = useDisplayPreferences();
+  const { scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [candidate, setCandidate] = useState("");
@@ -59,7 +59,14 @@ export function Compare() {
   };
 
   const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
+  const dimensionMaxima = useMemo(
+    () => new Map(dimensions.map((dimension) => [dimension.id, dimensionMax(models, dimension.id)])),
+    [models, dimensions],
+  );
   const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
+  const compositeMax = useMemo(() => scoreMax(models.map((model) => model.score)), [models]);
+  const compositeLabel = scorePercentageMaxMode ? "综合占比" : "综合强度";
+  const percentageNote = scorePercentageMaxMode ? "100% = 同项最高分" : "100% = 最强";
 
   let content: ReactNode;
   if (loading && !data) {
@@ -113,9 +120,13 @@ export function Compare() {
                     </div>
                     <span className={styles.vendor}>{model.vendor || "—"}</span>
                     <div className={styles.modelScoreBlock}>
-                      {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合强度</span> : null}
+                      {scorePercentageMode ? <span className={styles.modelScoreLabel}>{compositeLabel}</span> : null}
                       <div className={styles.modelScore}>
-                        {scorePercentageMode ? formatStrengthPercentile(model.score, compositeRange) : formatScore(model.score)}
+                        {scorePercentageMode
+                          ? scorePercentageMaxMode
+                            ? formatMaxSharePercent(model.score, compositeMax)
+                            : formatStrengthPercentile(model.score, compositeRange)
+                          : formatScore(model.score)}
                       </div>
                     </div>
                     <div className={styles.coverageRow}>
@@ -136,7 +147,11 @@ export function Compare() {
                   </th>
                   {selected.map((model) => (
                     <td key={model.slug} className={styles.valueCell}>
-                      <DimensionScore value={model.scores[String(dimension.id)]} range={scoreRanges.get(dimension.id)} />
+                      <DimensionScore
+                        value={model.scores[String(dimension.id)]}
+                        range={scoreRanges.get(dimension.id)}
+                        max={dimensionMaxima.get(dimension.id)}
+                      />
                     </td>
                   ))}
                 </tr>
@@ -161,8 +176,14 @@ export function Compare() {
               </header>
               <div className={styles.cardScore}>
                 <div className={styles.cardScoreValue}>
-                  {scorePercentageMode ? <span className={styles.modelScoreLabel}>综合强度</span> : null}
-                  <strong>{scorePercentageMode ? formatStrengthPercentile(model.score, compositeRange) : formatScore(model.score)}</strong>
+                  {scorePercentageMode ? <span className={styles.modelScoreLabel}>{compositeLabel}</span> : null}
+                  <strong>
+                    {scorePercentageMode
+                      ? scorePercentageMaxMode
+                        ? formatMaxSharePercent(model.score, compositeMax)
+                        : formatStrengthPercentile(model.score, compositeRange)
+                      : formatScore(model.score)}
+                  </strong>
                 </div>
                 <Coverage coverage={model.coverage} provisional={model.provisional} />
               </div>
@@ -174,7 +195,11 @@ export function Compare() {
                       <span className={styles.weight}>{dimension.weight}</span>
                     </dt>
                     <dd>
-                      <DimensionScore value={model.scores[String(dimension.id)]} range={scoreRanges.get(dimension.id)} />
+                      <DimensionScore
+                        value={model.scores[String(dimension.id)]}
+                        range={scoreRanges.get(dimension.id)}
+                        max={dimensionMaxima.get(dimension.id)}
+                      />
                     </dd>
                   </div>
                 ))}
@@ -231,7 +256,7 @@ export function Compare() {
         <p className={styles.count}>
           {selected.length} / 4
           {selected.length >= 4 ? " · 已达上限" : ""}
-          {scorePercentageMode ? " · 百分比 · 100% = 最强" : ""}
+          {scorePercentageMode ? ` · 百分比 · ${percentageNote}` : ""}
         </p>
       </div>
 

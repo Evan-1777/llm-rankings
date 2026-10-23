@@ -7,19 +7,22 @@ import (
 )
 
 type displaySettingsResponse struct {
-	ScorePercentageMode bool `json:"scorePercentageMode"`
-	MaintenanceMode     bool `json:"maintenanceMode"`
+	ScorePercentageMode    bool `json:"scorePercentageMode"`
+	ScorePercentageMaxMode bool `json:"scorePercentageMaxMode"`
+	MaintenanceMode        bool `json:"maintenanceMode"`
 }
 
 type displaySettingsInput struct {
-	ScorePercentageMode *bool `json:"scorePercentageMode"`
-	MaintenanceMode     *bool `json:"maintenanceMode"`
+	ScorePercentageMode    *bool `json:"scorePercentageMode"`
+	ScorePercentageMaxMode *bool `json:"scorePercentageMaxMode"`
+	MaintenanceMode        *bool `json:"maintenanceMode"`
 }
 
 func toDisplaySettingsResponse(settings store.DisplaySettings) displaySettingsResponse {
 	return displaySettingsResponse{
-		ScorePercentageMode: settings.ScorePercentageMode,
-		MaintenanceMode:     settings.MaintenanceMode,
+		ScorePercentageMode:    settings.ScorePercentageMode,
+		ScorePercentageMaxMode: settings.ScorePercentageMaxMode,
+		MaintenanceMode:        settings.MaintenanceMode,
 	}
 }
 
@@ -43,6 +46,9 @@ func (s *Server) handlePutDisplaySettings(w http.ResponseWriter, r *http.Request
 	if input.ScorePercentageMode == nil {
 		fields["scorePercentageMode"] = "请提供百分比模式设置"
 	}
+	if input.ScorePercentageMaxMode == nil {
+		fields["scorePercentageMaxMode"] = "请提供最高分占比设置"
+	}
 	if input.MaintenanceMode == nil {
 		fields["maintenanceMode"] = "请提供维护模式设置"
 	}
@@ -51,8 +57,9 @@ func (s *Server) handlePutDisplaySettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	settings := store.DisplaySettings{
-		ScorePercentageMode: *input.ScorePercentageMode,
-		MaintenanceMode:     *input.MaintenanceMode,
+		ScorePercentageMode:    *input.ScorePercentageMode,
+		ScorePercentageMaxMode: *input.ScorePercentageMaxMode,
+		MaintenanceMode:        *input.MaintenanceMode,
 	}
 	if err := s.store.UpdateDisplaySettings(r.Context(), settings); err != nil {
 		s.internalError(w, err)

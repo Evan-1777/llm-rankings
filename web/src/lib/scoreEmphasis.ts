@@ -18,6 +18,16 @@ const NEUTRAL_BAND = 0.04;
 /** Lowest visible tone strength; off-centre scores never fade back into the paper. */
 const MIN_TONE_STRENGTH = 0.18;
 
+/** Highest valid score in one comparison set; 0 when the set has no non-negative finite value. */
+export function scoreMax(values: Iterable<number | null | undefined>): number {
+  let max = 0;
+  for (const value of values) {
+    if (value == null || !Number.isFinite(value) || value < 0) continue;
+    if (value > max) max = value;
+  }
+  return max;
+}
+
 /** Full-board range of one comparison set, used only for display. Fewer than two distinct valid values have no range. */
 export function scoreRange(values: Iterable<number | null | undefined>): ScoreRange | null {
   let min = Number.POSITIVE_INFINITY;
@@ -60,6 +70,26 @@ export function formatStrengthPercentile(value: number | null | undefined, range
   let rounded = Math.round(strength * 10) / 10;
   if (!best && rounded >= 100) rounded = 99.9;
   if (!worst && rounded <= 1) rounded = 1.1;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+/** Share of the highest score in the same comparison set; zero is a real value, an absent maximum is undefined. */
+export function maxSharePercent(value: number | null | undefined, max: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value < 0) return null;
+  if (max == null || !Number.isFinite(max) || max <= 0) return null;
+  const percent = (value / max) * 100;
+  if (!Number.isFinite(percent)) return null;
+  return Math.min(100, Math.max(0, percent));
+}
+
+/** Formats the max share with one decimal; only a real zero renders as 0% and only the true maximum as 100%. */
+export function formatMaxSharePercent(value: number | null | undefined, max: number | null | undefined): string {
+  const percent = maxSharePercent(value, max);
+  if (percent == null) return "—";
+  const best = value === max;
+  let rounded = Math.round(percent * 10) / 10;
+  if (!best && rounded >= 100) rounded = 99.9;
+  if (!best && value !== 0 && rounded <= 0) rounded = 0.1;
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 

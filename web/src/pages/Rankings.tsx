@@ -13,9 +13,9 @@ import { SortButton } from "../components/SortButton";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { dimensionKey, formatScore, sortRows, type SortDir } from "../domain/ranking";
+import { dimensionKey, dimensionMax, formatScore, sortRows, type SortDir } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatStrengthPercentile, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, formatMaxSharePercent, formatStrengthPercentile, scoreMax, scoreRange } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -79,7 +79,7 @@ export function Rankings() {
   useDocumentTitle("综合排行");
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
-  const { dimensionScoreEmphasis, scorePercentageMode } = useDisplayPreferences();
+  const { dimensionScoreEmphasis, scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
   const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -94,7 +94,12 @@ export function Rankings() {
   const compareSlugs = resolveCompare(params, models);
   const sortedModels = useMemo(() => sortRows(models, sort.key, sort.dir), [models, sort.key, sort.dir]);
   const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
+  const dimensionMaxima = useMemo(
+    () => new Map(dimensions.map((dimension) => [dimension.id, dimensionMax(models, dimension.id)])),
+    [models, dimensions],
+  );
   const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
+  const compositeMax = useMemo(() => scoreMax(models.map((model) => model.score)), [models]);
 
   const updateSort = (key: string) => {
     const next = new URLSearchParams(params);
@@ -127,6 +132,18 @@ export function Rankings() {
   };
 
   const openSettings = () => navigate("/settings?tab=dimensions");
+
+  const compositeLabel = scorePercentageMode ? (scorePercentageMaxMode ? "综合占比" : "综合强度") : "综合分";
+  const percentageLabel = scorePercentageMaxMode ? "最高分占比" : "相对强度";
+  const compositeNote = !scorePercentageMode
+    ? "加权平均 / 全部模型"
+    : scorePercentageMaxMode
+      ? compositeMax > 0
+        ? "最高分占比 / 100% = 同项最高分"
+        : "最高分占比 / 需有大于 0 的分值"
+      : compositeRange
+        ? "相对强度 / 100% = 最强"
+        : "相对强度 / 需至少两个不同分值";
 
   let content: ReactNode;
   if ((loading && !data) || session.loading) {
@@ -203,7 +220,7 @@ export function Rankings() {
                   </th>
                   <SortHeader label="模型" className={styles.modelCol} active={sort.key === "model"} dir={sort.dir} onClick={() => updateSort("model")} />
                   <SortHeader
-                    label={scorePercentageMode ? "综合强度" : "综合分"}
+                    label={compositeLabel}
                     className={styles.scoreCol}
                     right
                     active={sort.key === "score"}
@@ -243,14 +260,22 @@ export function Rankings() {
                         <span className={styles.vendor}>{model.vendor || "—"}</span>
                       </td>
                       <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
-                        {scorePercentageMode ? formatStrengthPercentile(model.score, compositeRange) : formatScore(model.score)}
+                        {scorePercentageMode
+                          ? scorePercentageMaxMode
+                            ? formatMaxSharePercent(model.score, compositeMax)
+                            : formatStrengthPercentile(model.score, compositeRange)
+                          : formatScore(model.score)}
                       </td>
                       <td className={styles.td}>
                         <Coverage coverage={model.coverage} provisional={model.provisional} />
                       </td>
                       {dimensions.map((dimension) => (
                         <td key={dimension.id} className={`${styles.td} ${styles.dimCol} ${styles.alignRight} ${styles.dimValue}`}>
-                          <DimensionScore value={model.scores[String(dimension.id)]} range={scoreRanges.get(dimension.id)} />
+                          <DimensionScore
+                            value={model.scores[String(dimension.id)]}
+                            range={scoreRanges.get(dimension.id)}
+                            max={dimensionMaxima.get(dimension.id)}
+                          />
                         </td>
                       ))}
                       <td className={`${styles.td} ${styles.actionCol}`}>
@@ -284,7 +309,7 @@ export function Rankings() {
               <span className={styles.footMark} aria-hidden="true" />
               覆盖率低于 80% 标记为暂定
             </p>
-            <p>权重合计 {data.totalWeight} / {scorePercentageMode ? "相对强度" : "加权平均"}</p>
+            <p>权重合计 {data.totalWeight} / {scorePercentageMode ? percentageLabel : "加权平均"}</p>
           </div>
         </>
       );
@@ -319,13 +344,7 @@ export function Rankings() {
       <div className={styles.billHead}>
         <div className={styles.billIntro}>
           <p className={ui.sectionLabel}>当前榜单</p>
-          <span className={ui.sectionMeta}>
-            {scorePercentageMode
-              ? compositeRange
-                ? "相对强度 / 100% = 最强"
-                : "相对强度 / 需至少两个不同分值"
-              : "加权平均 / 全部模型"}
-          </span>
+          <span className={ui.sectionMeta}>{compositeNote}</span>
           {dimensionScoreEmphasis ? (
             <span className={ui.legend}>
               <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />

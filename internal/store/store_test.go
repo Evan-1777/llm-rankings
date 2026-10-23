@@ -415,20 +415,26 @@ func TestDisplaySettingsDefaultsAndPersists(t *testing.T) {
 	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true}); err != nil {
 		t.Fatalf("enable percentage: %v", err)
 	}
-	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || settings.MaintenanceMode {
+	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || settings.ScorePercentageMaxMode || settings.MaintenanceMode {
 		t.Fatalf("percentage only = %+v, %v", settings, err)
+	}
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true, ScorePercentageMaxMode: true}); err != nil {
+		t.Fatalf("enable max share: %v", err)
+	}
+	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || !settings.ScorePercentageMaxMode || settings.MaintenanceMode {
+		t.Fatalf("max share enabled = %+v, %v", settings, err)
 	}
 	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{MaintenanceMode: true}); err != nil {
 		t.Fatalf("enable maintenance: %v", err)
 	}
-	if settings, err = s.DisplaySettings(ctx); err != nil || settings.ScorePercentageMode || !settings.MaintenanceMode {
+	if settings, err = s.DisplaySettings(ctx); err != nil || settings.ScorePercentageMode || settings.ScorePercentageMaxMode || !settings.MaintenanceMode {
 		t.Fatalf("maintenance only = %+v, %v", settings, err)
 	}
-	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true, MaintenanceMode: true}); err != nil {
-		t.Fatalf("enable both: %v", err)
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true, ScorePercentageMaxMode: true, MaintenanceMode: true}); err != nil {
+		t.Fatalf("enable all: %v", err)
 	}
-	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || !settings.MaintenanceMode {
-		t.Fatalf("both enabled = %+v, %v", settings, err)
+	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || !settings.ScorePercentageMaxMode || !settings.MaintenanceMode {
+		t.Fatalf("all enabled = %+v, %v", settings, err)
 	}
 	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{}); err != nil {
 		t.Fatalf("disable: %v", err)
