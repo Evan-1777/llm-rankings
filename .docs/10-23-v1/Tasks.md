@@ -14,7 +14,7 @@
 
 ### TASK-001：追加评语迁移与存储读写
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：新增迁移 `migrations/007_model_commentary.sql`，为 `models` 追加评语正文、公开标记与评语日期；在 `internal/store/models.go` 扩展模型结构、扫描列与评语写入。
 - **Details**：
@@ -32,7 +32,7 @@
 
 ### TASK-002：扩展模型接口的评语字段与可见性
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：修改 `internal/api/handlers_models.go`：模型响应、列表项、详情响应与 PATCH 载荷增加评语三字段，按管理员身份裁剪可见性，并补齐写入校验。
 - **Details**：
@@ -54,7 +54,7 @@
 
 ### TASK-003：导出包含评语字段
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：在 `internal/api/handlers_export.go` 的 `exportModel` 与填充逻辑中增加评语三字段，保证备份可还原评语、公开状态与日期。
 - **Details**：
@@ -72,7 +72,7 @@
 
 ### TASK-004：模型编辑弹窗增加评语、公开与日期
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：在 `web/src/api/types.ts` 同步评语字段，在 `web/src/components/ModelDialog.tsx` 的编辑态增加评语文本域、公开勾选与评语日期输入，并随更新请求提交。
 - **Details**：
@@ -95,7 +95,7 @@
 
 ### TASK-005：详情页底部「模型评语」区块
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：在 `web/src/pages/ModelDetail.tsx` 的文字维度之后、私人备注之前渲染评语区块，并在 `web/src/pages/ModelDetail.module.css` 补充样式。
 - **Details**：
@@ -119,7 +119,7 @@
 
 ### TASK-006：收紧隐藏模型的匿名可达面
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：修改 `internal/api/handlers_models.go`，让隐藏模型对匿名访客不可见；同步修正 `internal/api/api_test.go` 中「默认列表包含隐藏模型」的旧断言。
 - **Details**：
@@ -135,7 +135,7 @@
 
 ### TASK-007：工作台隐藏行弱化覆盖率
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：为 `web/src/components/Coverage.tsx` 增加弱化态，并在 `web/src/pages/Workbench.tsx` 的隐藏行传入；样式写入 `web/src/components/ui.module.css`。
 - **Details**：
@@ -151,7 +151,7 @@
 
 ### TASK-008：修正维度弹窗的初始与回退权重
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：修改 `web/src/components/DimensionDialog.tsx`，让新建维度与取消「不纳入评分」后都处于合法权重区间。
 - **Details**：
@@ -168,7 +168,7 @@
 
 ### TASK-009：隐藏模型详情合并自身到强度基准
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：修改 `web/src/pages/ModelDetail.tsx`，把当前模型并入详情页的展示范围，使隐藏模型的综合强度、维度强度与相对条不再落回 99.9% 或「—」。
 - **Details**：
@@ -190,7 +190,7 @@
 
 ### TASK-010：补齐评语存储与接口回归
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：在 `internal/store/store_test.go` 与 `internal/api/api_test.go` 增加评语持久化、可见性与校验的回归测试。
 - **Details**：
@@ -206,7 +206,7 @@
 
 ### TASK-011：全量命令与浏览器验收
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：执行全量校验命令，并在浏览器中验收评语、隐藏模型可达面与三处展示修正。
 - **Details**：
@@ -224,7 +224,7 @@
 
 ### TASK-012：同步文档、归档与提交
 
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：更新 `.docs/Project.md`，随后将 Plan.md 与 Tasks.md 标注完成并归档到 `.docs/10-23-v1/`，最后提交。
 - **Details**：
