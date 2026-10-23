@@ -54,6 +54,9 @@ export interface ModelSummary {
   vendor: string;
   notes?: string;
   hidden: boolean;
+  commentary?: string;
+  commentaryPublic?: boolean;
+  commentaryAt?: string;
   archivedAt: string | null;
   /** Every stored score, including archived and zero-weight dimensions. */
   scoreCount: number;
@@ -78,6 +81,9 @@ export interface ModelDetail {
   vendor: string;
   notes?: string;
   hidden: boolean;
+  commentary?: string;
+  commentaryPublic?: boolean;
+  commentaryAt?: string;
   score: number | null;
   coverage: number;
   provisional: boolean;
@@ -107,6 +113,9 @@ export interface ModelPatch {
   vendor?: string;
   notes?: string;
   hidden?: boolean;
+  commentary?: string;
+  commentaryPublic?: boolean;
+  commentaryAt?: string;
 }
 
 export interface DisplaySettings {

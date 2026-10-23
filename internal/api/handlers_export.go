@@ -16,14 +16,17 @@ type exportResponse struct {
 }
 
 type exportModel struct {
-	Slug       string  `json:"slug"`
-	Name       string  `json:"name"`
-	Vendor     string  `json:"vendor"`
-	Notes      string  `json:"notes"`
-	Hidden     bool    `json:"hidden"`
-	ArchivedAt *string `json:"archivedAt"`
-	CreatedAt  string  `json:"createdAt"`
-	UpdatedAt  string  `json:"updatedAt"`
+	Slug             string  `json:"slug"`
+	Name             string  `json:"name"`
+	Vendor           string  `json:"vendor"`
+	Notes            string  `json:"notes"`
+	Hidden           bool    `json:"hidden"`
+	ArchivedAt       *string `json:"archivedAt"`
+	Commentary       string  `json:"commentary"`
+	CommentaryPublic bool    `json:"commentaryPublic"`
+	CommentaryAt     string  `json:"commentaryAt"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
 }
 
 type exportScore struct {
@@ -73,14 +76,17 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	for _, m := range models {
 		slugByID[m.ID] = m.Slug
 		exportModels = append(exportModels, exportModel{
-			Slug:       m.Slug,
-			Name:       m.Name,
-			Vendor:     m.Vendor,
-			Notes:      m.Notes,
-			Hidden:     m.Hidden,
-			ArchivedAt: stampString(m.ArchivedAt),
-			CreatedAt:  m.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:  m.UpdatedAt.UTC().Format(time.RFC3339),
+			Slug:             m.Slug,
+			Name:             m.Name,
+			Vendor:           m.Vendor,
+			Notes:            m.Notes,
+			Hidden:           m.Hidden,
+			ArchivedAt:       stampString(m.ArchivedAt),
+			Commentary:       m.Commentary,
+			CommentaryPublic: m.CommentaryPublic,
+			CommentaryAt:     m.CommentaryAt,
+			CreatedAt:        m.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:        m.UpdatedAt.UTC().Format(time.RFC3339),
 		})
 	}
 	exportScores := make([]exportScore, 0, len(scores))

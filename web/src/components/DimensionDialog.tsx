@@ -30,7 +30,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     if (!open) return;
     setName(dimension?.name ?? "");
     setDescription(dimension?.description ?? "");
-    setWeight(String(dimension?.weight ?? 0));
+    setWeight(dimension ? String(dimension.weight) : "50");
     setExcluded(dimension ? dimension.weight === 0 : false);
     setTextMode(dimension?.textMode ?? false);
     setErrors({});
@@ -114,6 +114,8 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
                     setWeight("0");
                   } else {
                     setTextMode(false);
+                    const numeric = Number(weight);
+                    if (!Number.isInteger(numeric) || numeric <= 0) setWeight("50");
                   }
                 }}
               />

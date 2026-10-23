@@ -12,14 +12,17 @@ import (
 )
 
 type modelResponse struct {
-	Slug       string  `json:"slug"`
-	Name       string  `json:"name"`
-	Vendor     string  `json:"vendor"`
-	Notes      string  `json:"notes"`
-	Hidden     bool    `json:"hidden"`
-	ArchivedAt *string `json:"archivedAt"`
-	CreatedAt  string  `json:"createdAt"`
-	UpdatedAt  string  `json:"updatedAt"`
+	Slug             string  `json:"slug"`
+	Name             string  `json:"name"`
+	Vendor           string  `json:"vendor"`
+	Notes            string  `json:"notes"`
+	Hidden           bool    `json:"hidden"`
+	ArchivedAt       *string `json:"archivedAt"`
+	Commentary       string  `json:"commentary"`
+	CommentaryPublic bool    `json:"commentaryPublic"`
+	CommentaryAt     string  `json:"commentaryAt"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
 }
 
 type modelListItem struct {
@@ -29,25 +32,31 @@ type modelListItem struct {
 	Notes            *string `json:"notes,omitempty"`
 	Hidden           bool    `json:"hidden"`
 	ArchivedAt       *string `json:"archivedAt"`
+	Commentary       *string `json:"commentary,omitempty"`
+	CommentaryPublic *bool   `json:"commentaryPublic,omitempty"`
+	CommentaryAt     *string `json:"commentaryAt,omitempty"`
 	ScoreCount       int     `json:"scoreCount"`
 	ScoredDimensions int     `json:"scoredDimensions"`
 	UpdatedAt        string  `json:"updatedAt"`
 }
 
 type modelDetailResponse struct {
-	Slug           string           `json:"slug"`
-	Name           string           `json:"name"`
-	Vendor         string           `json:"vendor"`
-	Notes          *string          `json:"notes,omitempty"`
-	Hidden         bool             `json:"hidden"`
-	Score          *float64         `json:"score"`
-	Coverage       float64          `json:"coverage"`
-	Provisional    bool             `json:"provisional"`
-	Rank           *int             `json:"rank"`
-	Dimensions     []modelDimension `json:"dimensions"`
-	ScoredCount    int              `json:"scoredCount"`
-	DimensionCount int              `json:"dimensionCount"`
-	UpdatedAt      string           `json:"updatedAt"`
+	Slug             string           `json:"slug"`
+	Name             string           `json:"name"`
+	Vendor           string           `json:"vendor"`
+	Notes            *string          `json:"notes,omitempty"`
+	Hidden           bool             `json:"hidden"`
+	Commentary       *string          `json:"commentary,omitempty"`
+	CommentaryPublic *bool            `json:"commentaryPublic,omitempty"`
+	CommentaryAt     *string          `json:"commentaryAt,omitempty"`
+	Score            *float64         `json:"score"`
+	Coverage         float64          `json:"coverage"`
+	Provisional      bool             `json:"provisional"`
+	Rank             *int             `json:"rank"`
+	Dimensions       []modelDimension `json:"dimensions"`
+	ScoredCount      int              `json:"scoredCount"`
+	DimensionCount   int              `json:"dimensionCount"`
+	UpdatedAt        string           `json:"updatedAt"`
 }
 
 type modelDimension struct {
@@ -70,20 +79,24 @@ func stampString(t *time.Time) *string {
 
 func toModelResponse(m store.Model) modelResponse {
 	return modelResponse{
-		Slug:       m.Slug,
-		Name:       m.Name,
-		Vendor:     m.Vendor,
-		Notes:      m.Notes,
-		Hidden:     m.Hidden,
-		ArchivedAt: stampString(m.ArchivedAt),
-		CreatedAt:  m.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:  m.UpdatedAt.UTC().Format(time.RFC3339),
+		Slug:             m.Slug,
+		Name:             m.Name,
+		Vendor:           m.Vendor,
+		Notes:            m.Notes,
+		Hidden:           m.Hidden,
+		ArchivedAt:       stampString(m.ArchivedAt),
+		Commentary:       m.Commentary,
+		CommentaryPublic: m.CommentaryPublic,
+		CommentaryAt:     m.CommentaryAt,
+		CreatedAt:        m.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:        m.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
 func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
+	admin := s.auth.Authenticated(r)
 	includeArchived := r.URL.Query().Get("includeArchived") == "1"
-	if includeArchived && !s.auth.Authenticated(r) {
+	if includeArchived && !admin {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "请先登录")
 		return
 	}
@@ -92,9 +105,11 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
-	admin := s.auth.Authenticated(r)
 	out := make([]modelListItem, 0, len(models))
 	for _, m := range models {
+		if m.Hidden && !admin {
+			continue
+		}
 		item := modelListItem{
 			Slug:             m.Slug,
 			Name:             m.Name,
@@ -108,6 +123,12 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 		if admin {
 			notes := m.Notes
 			item.Notes = &notes
+			commentary := m.Commentary
+			item.Commentary = &commentary
+			commentaryPublic := m.CommentaryPublic
+			item.CommentaryPublic = &commentaryPublic
+			commentaryAt := m.CommentaryAt
+			item.CommentaryAt = &commentaryAt
 		}
 		out = append(out, item)
 	}
@@ -122,10 +143,13 @@ type modelCreateInput struct {
 }
 
 type modelPatch struct {
-	Name   *string `json:"name"`
-	Vendor *string `json:"vendor"`
-	Notes  *string `json:"notes"`
-	Hidden *bool   `json:"hidden"`
+	Name             *string `json:"name"`
+	Vendor           *string `json:"vendor"`
+	Notes            *string `json:"notes"`
+	Hidden           *bool   `json:"hidden"`
+	Commentary       *string `json:"commentary"`
+	CommentaryPublic *bool   `json:"commentaryPublic"`
+	CommentaryAt     *string `json:"commentaryAt"`
 }
 
 func validateModel(name, slug, vendor, notes string) map[string]string {
@@ -141,6 +165,22 @@ func validateModel(name, slug, vendor, notes string) map[string]string {
 	}
 	if utf8.RuneCountInString(notes) > 2000 {
 		fields["notes"] = "备注不能超过 2000 个字符"
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
+func validateCommentary(commentary, at string) map[string]string {
+	fields := map[string]string{}
+	if utf8.RuneCountInString(commentary) > 500 {
+		fields["commentary"] = "评语不能超过 500 个字符"
+	}
+	if at != "" {
+		if _, err := time.Parse("2006-01-02", at); err != nil {
+			fields["commentaryAt"] = "评语时间需为 YYYY-MM-DD"
+		}
 	}
 	if len(fields) == 0 {
 		return nil
@@ -214,7 +254,8 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSON(w, r, &patch) {
 		return
 	}
-	if patch.Name == nil && patch.Vendor == nil && patch.Notes == nil && patch.Hidden == nil {
+	commentaryChanged := patch.Commentary != nil || patch.CommentaryPublic != nil || patch.CommentaryAt != nil
+	if patch.Name == nil && patch.Vendor == nil && patch.Notes == nil && patch.Hidden == nil && !commentaryChanged {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "没有需要更新的字段", map[string]string{"_": "没有需要更新的字段"})
 		return
 	}
@@ -228,7 +269,29 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
 	if patch.Notes != nil {
 		notes = *patch.Notes
 	}
-	if fields := validateModel(name, current.Slug, vendor, notes); fields != nil {
+	commentary, commentaryPublic, commentaryAt := current.Commentary, current.CommentaryPublic, current.CommentaryAt
+	if patch.Commentary != nil {
+		commentary = *patch.Commentary
+	}
+	if patch.CommentaryPublic != nil {
+		commentaryPublic = *patch.CommentaryPublic
+	}
+	if patch.CommentaryAt != nil {
+		commentaryAt = strings.TrimSpace(*patch.CommentaryAt)
+	}
+	fields := validateModel(name, current.Slug, vendor, notes)
+	if commentaryChanged {
+		if commentaryFields := validateCommentary(commentary, commentaryAt); commentaryFields != nil {
+			if fields == nil {
+				fields = commentaryFields
+			} else {
+				for key, message := range commentaryFields {
+					fields[key] = message
+				}
+			}
+		}
+	}
+	if fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查模型信息", fields)
 		return
 	}
@@ -247,16 +310,24 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if commentaryChanged {
+		updated, err = s.store.SetModelCommentary(r.Context(), current.ID, commentary, commentaryPublic, commentaryAt)
+		if err != nil {
+			s.writeStoreError(w, err)
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, toModelResponse(updated))
 }
 
 func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
+	admin := s.auth.Authenticated(r)
 	model, err := s.store.ModelBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
 	}
-	if model.ArchivedAt != nil {
+	if model.ArchivedAt != nil || (model.Hidden && !admin) {
 		writeError(w, http.StatusNotFound, "not_found", "对象不存在")
 		return
 	}
@@ -265,7 +336,6 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
-	admin := s.auth.Authenticated(r)
 	scores, err := s.store.ScoresForModel(r.Context(), model.ID)
 	if err != nil {
 		s.internalError(w, err)
@@ -347,6 +417,14 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	if admin {
 		notes := model.Notes
 		response.Notes = &notes
+	}
+	if admin || model.CommentaryPublic {
+		commentary := model.Commentary
+		commentaryPublic := model.CommentaryPublic
+		commentaryAt := model.CommentaryAt
+		response.Commentary = &commentary
+		response.CommentaryPublic = &commentaryPublic
+		response.CommentaryAt = &commentaryAt
 	}
 	writeJSON(w, http.StatusOK, response)
 }

@@ -341,6 +341,7 @@ export function Workbench() {
                       provisional={model.provisional}
                       scored={ratedCount}
                       total={weightDimensions.length}
+                      muted={model.hidden}
                     />
                   </td>
                   {!editing ? (

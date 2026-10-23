@@ -167,6 +167,90 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 	}
 }
 
+func TestModelCommentaryStorage(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	m, err := s.CreateModel(ctx, "voice", "Voice", "Vendor", "private")
+	if err != nil {
+		t.Fatalf("create model: %v", err)
+	}
+	if m.Commentary != "" || m.CommentaryPublic || m.CommentaryAt != "" {
+		t.Fatalf("new model commentary defaults = %+v", m)
+	}
+	updated, err := s.SetModelCommentary(ctx, m.ID, "第一段\nsecond line", true, "2026-10-23")
+	if err != nil {
+		t.Fatalf("set commentary: %v", err)
+	}
+	if updated.Commentary != "第一段\nsecond line" || !updated.CommentaryPublic || updated.CommentaryAt != "2026-10-23" {
+		t.Fatalf("set commentary result = %+v", updated)
+	}
+
+	bySlug, err := s.ModelBySlug(ctx, "voice")
+	if err != nil || bySlug.Commentary != updated.Commentary || bySlug.CommentaryPublic != updated.CommentaryPublic || bySlug.CommentaryAt != updated.CommentaryAt {
+		t.Fatalf("ModelBySlug commentary = %+v, %v", bySlug, err)
+	}
+	list, err := s.ListModels(ctx, false)
+	if err != nil || len(list) != 1 || list[0].Commentary != updated.Commentary || !list[0].CommentaryPublic || list[0].CommentaryAt != updated.CommentaryAt {
+		t.Fatalf("ListModels commentary = %+v, %v", list, err)
+	}
+
+	overwritten, err := s.SetModelCommentary(ctx, m.ID, "重写", false, "")
+	if err != nil || overwritten.Commentary != "重写" || overwritten.CommentaryPublic || overwritten.CommentaryAt != "" {
+		t.Fatalf("overwrite commentary = %+v, %v", overwritten, err)
+	}
+	cleared, err := s.SetModelCommentary(ctx, m.ID, "", false, "")
+	if err != nil || cleared.Commentary != "" || cleared.CommentaryPublic || cleared.CommentaryAt != "" {
+		t.Fatalf("clear commentary = %+v, %v", cleared, err)
+	}
+	if _, err := s.SetModelCommentary(ctx, m.ID+999, "x", false, ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing model commentary error = %v", err)
+	}
+}
+
+func TestCommentaryMigrationKeepsLegacyModels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open legacy: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"001_init.sql", "002_dimension_order.sql", "003_display_settings.sql",
+		"004_maintenance_mode.sql", "005_model_visibility_archive.sql", "006_dimension_text_mode.sql",
+	} {
+		body, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(body)); err != nil {
+			t.Fatalf("legacy migration %s: %v", name, err)
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`, name, nowStamp()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := nowStamp()
+	if _, err := db.Exec(`INSERT INTO models (slug, name, vendor, notes, created_at, updated_at) VALUES ('legacy', 'Legacy', '', '', ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open migrated store: %v", err)
+	}
+	defer s.Close()
+	m, err := s.ModelBySlug(context.Background(), "legacy")
+	if err != nil {
+		t.Fatalf("legacy model: %v", err)
+	}
+	if m.Commentary != "" || m.CommentaryPublic || m.CommentaryAt != "" {
+		t.Fatalf("legacy commentary defaults = %+v", m)
+	}
+}
+
 func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import type { RankingModel } from "../api/types";
+import type { ModelDetail as ModelDetailData, RankingModel } from "../api/types";
 import { Button } from "../components/Button";
 import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
@@ -18,6 +18,24 @@ import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { useSession } from "../session/SessionProvider";
 import styles from "./ModelDetail.module.css";
 
+function rankingModelFromDetail(detail: ModelDetailData): RankingModel {
+  return {
+    slug: detail.slug,
+    name: detail.name,
+    vendor: detail.vendor,
+    hidden: detail.hidden,
+    score: detail.score,
+    coverage: detail.coverage,
+    provisional: detail.provisional,
+    rank: detail.rank,
+    scores: Object.fromEntries(
+      detail.dimensions
+        .filter((dimension) => !dimension.textMode && dimension.value != null)
+        .map((dimension) => [String(dimension.id), dimension.value as number]),
+    ),
+  };
+}
+
 export function ModelDetail() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
@@ -33,14 +51,16 @@ export function ModelDetail() {
     () => (data?.detail.dimensions ?? []).filter((dimension) => !dimension.textMode).map((dimension) => dimension.id),
     [data?.detail.dimensions],
   );
+  const selfModel = useMemo(() => (data ? rankingModelFromDetail(data.detail) : null), [data]);
+  const displayModels = useMemo(() => {
+    const models = data?.rankings.models ?? [];
+    return selfModel && !models.some((model) => model.slug === selfModel.slug) ? [...models, selfModel] : models;
+  }, [data?.rankings.models, selfModel]);
   const scoreRanges = useMemo(
-    () => dimensionScoreRanges(data?.rankings.models ?? [], numericDimensionIds),
-    [data?.rankings.models, numericDimensionIds],
+    () => dimensionScoreRanges(displayModels, numericDimensionIds),
+    [displayModels, numericDimensionIds],
   );
-  const compositeRange = useMemo(
-    () => scoreRange((data?.rankings.models ?? []).map((model) => model.score)),
-    [data?.rankings.models],
-  );
+  const compositeRange = useMemo(() => scoreRange(displayModels.map((model) => model.score)), [displayModels]);
   const ranksByDimension = useMemo(
     () => dimensionRanks(data?.rankings.models ?? [], numericDimensionIds),
     [data?.rankings.models, numericDimensionIds],
@@ -88,22 +108,8 @@ export function ModelDetail() {
   const numericDimensions = detail.dimensions.filter((dimension) => !dimension.textMode);
   const textDimensions = detail.dimensions.filter((dimension) => dimension.textMode);
   const storedRow = ordered.find((model) => model.slug === detail.slug);
-  const scoreModel: RankingModel =
-    storedRow ?? {
-      slug: detail.slug,
-      name: detail.name,
-      vendor: detail.vendor,
-      hidden: detail.hidden,
-      score: detail.score,
-      coverage: detail.coverage,
-      provisional: detail.provisional,
-      rank: detail.rank,
-      scores: Object.fromEntries(
-        numericDimensions
-          .filter((dimension) => dimension.value != null)
-          .map((dimension) => [String(dimension.id), dimension.value as number]),
-      ),
-    };
+  // displayModels appends the current model when the public ranking omits it.
+  const scoreModel = storedRow ?? displayModels[displayModels.length - 1];
 
   return (
     <div className="shell page-enter">
@@ -217,7 +223,7 @@ export function ModelDetail() {
                 </thead>
                 <tbody>
                   {numericDimensions.map((dimension) => {
-                    const max = dimensionMax(rankings.models, dimension.id);
+                    const max = dimensionMax(displayModels, dimension.id);
                     const percent = scorePercentageMode ? strengthPercentile(dimension.value, scoreRanges.get(dimension.id)) : null;
                     const ranked = ranksByDimension.get(dimension.id);
                     const rank = ranked?.get(detail.slug) ?? null;
@@ -275,13 +281,30 @@ export function ModelDetail() {
         </>
       )}
 
+      {detail.commentary?.trim() ? (
+        <section className={styles.foot} aria-label="模型评语">
+          <div className={styles.footHead}>
+            模型评语
+            {!detail.commentaryPublic ? <span className={ui.tag}>未公开</span> : null}
+          </div>
+          <p className={styles.commentary}>
+            {detail.commentary}
+            {detail.commentaryAt ? (
+              <time className={styles.commentaryTime} dateTime={detail.commentaryAt}>
+                {detail.commentaryAt}
+              </time>
+            ) : null}
+          </p>
+        </section>
+      ) : null}
+
       {session.authenticated ? (
-        <section className={styles.private} aria-label="私人备注">
-          <div className={styles.privateHead}>
+        <section className={styles.foot} aria-label="私人备注">
+          <div className={styles.footHead}>
             <Icon name="lock" size={13} />
             仅管理员
           </div>
-          <p>{detail.notes?.trim() ? detail.notes : "暂无私人备注"}</p>
+          <p className={styles.footText}>{detail.notes?.trim() ? detail.notes : "暂无私人备注"}</p>
         </section>
       ) : null}
 

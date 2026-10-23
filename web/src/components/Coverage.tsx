@@ -6,16 +6,19 @@ export function Coverage({
   provisional,
   scored,
   total,
+  muted = false,
 }: {
   coverage: number;
   provisional: boolean;
   /** Optional rated/total dimension counts rendered next to the percentage. */
   scored?: number;
   total?: number;
+  /** Softens the percentage and bar for rows the surrounding context already de-emphasizes. */
+  muted?: boolean;
 }) {
   const width = Math.max(0, Math.min(100, coverage * 100));
   return (
-    <span className={ui.coverage}>
+    <span className={`${ui.coverage} ${muted ? ui.coverageMuted : ""}`}>
       <span className={ui.coverageLabel}>
         <span>{formatPercent(coverage)}</span>
         {provisional ? (

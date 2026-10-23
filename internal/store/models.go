@@ -7,17 +7,21 @@ import (
 	"time"
 )
 
-// Model is a model profile. Notes are private to the administrator.
+// Model is a model profile. Notes are private to the administrator; commentary
+// is public only when CommentaryPublic is set.
 type Model struct {
-	ID         int64
-	Slug       string
-	Name       string
-	Vendor     string
-	Notes      string
-	Hidden     bool
-	ArchivedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID               int64
+	Slug             string
+	Name             string
+	Vendor           string
+	Notes            string
+	Hidden           bool
+	ArchivedAt       *time.Time
+	Commentary       string
+	CommentaryPublic bool
+	CommentaryAt     string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // ModelSummary adds stored score totals and scoreable-dimension completeness
@@ -30,13 +34,13 @@ type ModelSummary struct {
 }
 
 // modelColumns is the shared SELECT and Scan order for every model read.
-const modelColumns = "id, slug, name, vendor, notes, hidden, archived_at, created_at, updated_at"
+const modelColumns = "id, slug, name, vendor, notes, hidden, archived_at, commentary, commentary_public, commentary_at, created_at, updated_at"
 
 func scanModel(row rowScanner) (Model, error) {
 	var m Model
 	var archived sql.NullString
 	var created, updated string
-	if err := row.Scan(&m.ID, &m.Slug, &m.Name, &m.Vendor, &m.Notes, &m.Hidden, &archived, &created, &updated); err != nil {
+	if err := row.Scan(&m.ID, &m.Slug, &m.Name, &m.Vendor, &m.Notes, &m.Hidden, &archived, &m.Commentary, &m.CommentaryPublic, &m.CommentaryAt, &created, &updated); err != nil {
 		return m, err
 	}
 	var err error
@@ -54,7 +58,7 @@ func scanModel(row rowScanner) (Model, error) {
 
 // ListModels returns models ordered by name, excluding archived rows by default.
 func (s *Store) ListModels(ctx context.Context, includeArchived bool) ([]ModelSummary, error) {
-	query := `SELECT m.id, m.slug, m.name, m.vendor, m.notes, m.hidden, m.archived_at, m.created_at, m.updated_at,
+	query := `SELECT m.id, m.slug, m.name, m.vendor, m.notes, m.hidden, m.archived_at, m.commentary, m.commentary_public, m.commentary_at, m.created_at, m.updated_at,
 		COUNT(sc.model_id),
 		COUNT(CASE WHEN d.archived_at IS NULL AND d.weight > 0 THEN 1 END)
 		FROM models m
@@ -75,7 +79,7 @@ func (s *Store) ListModels(ctx context.Context, includeArchived bool) ([]ModelSu
 		var m ModelSummary
 		var archived sql.NullString
 		var created, updated string
-		if err := rows.Scan(&m.ID, &m.Slug, &m.Name, &m.Vendor, &m.Notes, &m.Hidden, &archived, &created, &updated, &m.ScoreCount, &m.ScoredDimensions); err != nil {
+		if err := rows.Scan(&m.ID, &m.Slug, &m.Name, &m.Vendor, &m.Notes, &m.Hidden, &archived, &m.Commentary, &m.CommentaryPublic, &m.CommentaryAt, &created, &updated, &m.ScoreCount, &m.ScoredDimensions); err != nil {
 			return nil, err
 		}
 		var err error
@@ -147,6 +151,23 @@ func (s *Store) UpdateModel(ctx context.Context, id int64, name, vendor, notes s
 func (s *Store) SetModelHidden(ctx context.Context, id int64, hidden bool) (Model, error) {
 	res, err := s.db.ExecContext(ctx, `UPDATE models SET hidden = ?, updated_at = ? WHERE id = ?`,
 		hidden, nowStamp(), id)
+	if err != nil {
+		return Model{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return Model{}, err
+	}
+	if affected == 0 {
+		return Model{}, ErrNotFound
+	}
+	return s.modelByID(ctx, id)
+}
+
+// SetModelCommentary writes the public commentary fields as one unit.
+func (s *Store) SetModelCommentary(ctx context.Context, id int64, commentary string, public bool, at string) (Model, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE models SET commentary = ?, commentary_public = ?, commentary_at = ?, updated_at = ? WHERE id = ?`,
+		commentary, public, at, nowStamp(), id)
 	if err != nil {
 		return Model{}, err
 	}

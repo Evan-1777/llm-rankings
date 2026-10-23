@@ -714,6 +714,81 @@ func TestReorderDimensionsFlow(t *testing.T) {
 		t.Fatalf("cross-origin reorder = %d, want 403", code)
 	}
 }
+func TestModelCommentaryVisibilityAndValidation(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	createDimension(t, e, "Quality", 50)
+	createModel(t, e, "voice", "Voice")
+	path := "/api/models/voice"
+
+	code, body, _ := e.do(t, e.admin, http.MethodPatch, path, map[string]any{
+		"commentary": "第一段\nsecond line",
+	}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"commentary":"第一段\nsecond line"`) ||
+		!strings.Contains(string(body), `"commentaryPublic":false`) || !strings.Contains(string(body), `"name":"Voice"`) ||
+		!strings.Contains(string(body), `"vendor":"Vendor"`) || !strings.Contains(string(body), "private note") {
+		t.Fatalf("commentary-only patch = %d %s", code, body)
+	}
+
+	code, detail, _ := e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || strings.Contains(string(detail), "commentary") || strings.Contains(string(detail), "second line") {
+		t.Fatalf("anonymous detail leaked private commentary: %d %s", code, detail)
+	}
+	code, detail, _ = e.do(t, e.admin, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), "second line") || !strings.Contains(string(detail), `"commentaryPublic":false`) {
+		t.Fatalf("admin detail missing private commentary: %d %s", code, detail)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{
+		"commentaryPublic": true,
+		"commentaryAt":     "2026-10-23",
+	}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("publish commentary = %d %s", code, body)
+	}
+	code, detail, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), "second line") ||
+		!strings.Contains(string(detail), `"commentaryPublic":true`) || !strings.Contains(string(detail), `"commentaryAt":"2026-10-23"`) {
+		t.Fatalf("public commentary missing from anonymous detail: %d %s", code, detail)
+	}
+
+	code, models, _ := e.do(t, e.anon, http.MethodGet, "/api/models", nil, nil)
+	if code != http.StatusOK || strings.Contains(string(models), "commentary") {
+		t.Fatalf("anonymous list leaked commentary: %d %s", code, models)
+	}
+	code, models, _ = e.do(t, e.admin, http.MethodGet, "/api/models", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(models), "second line") || !strings.Contains(string(models), `"commentaryPublic":true`) {
+		t.Fatalf("admin list missing commentary: %d %s", code, models)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"commentary": strings.Repeat("字", 501)}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "评语不能超过 500 个字符") {
+		t.Fatalf("oversized commentary = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"commentaryAt": "2026-13-01"}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "评语时间需为 YYYY-MM-DD") {
+		t.Fatalf("invalid commentary date = %d %s", code, body)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/export", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"commentary": "第一段`) ||
+		!strings.Contains(string(body), `"commentaryPublic": true`) || !strings.Contains(string(body), `"commentaryAt": "2026-10-23"`) {
+		t.Fatalf("export missing commentary: %d %s", code, body)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{
+		"commentary": "", "commentaryAt": "", "commentaryPublic": false,
+	}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"commentary":""`) ||
+		!strings.Contains(string(body), `"commentaryAt":""`) || !strings.Contains(string(body), `"commentaryPublic":false`) {
+		t.Fatalf("clear commentary = %d %s", code, body)
+	}
+	code, detail, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || strings.Contains(string(detail), "commentary") {
+		t.Fatalf("cleared public commentary still visible: %d %s", code, detail)
+	}
+}
+
 func TestModelVisibilityArchiveAndText(t *testing.T) {
 	e := newEnv(t)
 	e.login(t)
@@ -733,8 +808,16 @@ func TestModelVisibilityArchiveAndText(t *testing.T) {
 	}
 
 	code, models, _ := e.do(t, e.anon, http.MethodGet, "/api/models", nil, nil)
+	if code != http.StatusOK || strings.Contains(string(models), `"slug":"hidden"`) {
+		t.Fatalf("anonymous list must exclude hidden models: %d %s", code, models)
+	}
+	code, models, _ = e.do(t, e.admin, http.MethodGet, "/api/models", nil, nil)
 	if code != http.StatusOK || !strings.Contains(string(models), `"slug":"hidden"`) || !strings.Contains(string(models), `"hidden":true`) {
-		t.Fatalf("default list must include hidden models: %d %s", code, models)
+		t.Fatalf("admin default list must include hidden models: %d %s", code, models)
+	}
+	code, _, _ = e.do(t, e.anon, http.MethodGet, "/api/models/hidden", nil, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("anonymous hidden detail = %d, want 404", code)
 	}
 	code, _, _ = e.do(t, e.anon, http.MethodGet, "/api/models?includeArchived=1", nil, nil)
 	if code != http.StatusUnauthorized {
@@ -803,9 +886,9 @@ func TestModelVisibilityArchiveAndText(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("put text = %d %s", code, body)
 	}
-	code, detail, _ = e.do(t, e.anon, http.MethodGet, "/api/models/hidden", nil, nil)
+	code, detail, _ = e.do(t, e.admin, http.MethodGet, "/api/models/hidden", nil, nil)
 	if code != http.StatusOK || !strings.Contains(string(detail), `"textMode":true`) || !strings.Contains(string(detail), "second line") {
-		t.Fatalf("detail missing text: %d %s", code, detail)
+		t.Fatalf("admin detail missing text: %d %s", code, detail)
 	}
 	code, body, _ = e.do(t, e.admin, http.MethodPut, textPath, map[string]any{"text": strings.Repeat("字", 2001)}, nil)
 	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "text") {
@@ -823,7 +906,7 @@ func TestModelVisibilityArchiveAndText(t *testing.T) {
 	if code != http.StatusNoContent {
 		t.Fatalf("clear text = %d", code)
 	}
-	code, detail, _ = e.do(t, e.anon, http.MethodGet, "/api/models/hidden", nil, nil)
+	code, detail, _ = e.do(t, e.admin, http.MethodGet, "/api/models/hidden", nil, nil)
 	if code != http.StatusOK || !strings.Contains(string(detail), `"text":""`) {
 		t.Fatalf("cleared text not empty: %d %s", code, detail)
 	}

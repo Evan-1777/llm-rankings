@@ -500,6 +500,14 @@
   background: var(--signal);
 }
 
+.coverageMuted .coverageLabel {
+  color: var(--ink-3);
+}
+
+.coverageMuted .coverageFill {
+  background: var(--ink-3);
+}
+
 .tag {
   display: inline-flex;
   align-items: center;

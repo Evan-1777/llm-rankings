@@ -24,6 +24,9 @@ export function ModelDialog({ open, model = null, models = [], onClose, onSaved 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [vendor, setVendor] = useState("");
+  const [commentary, setCommentary] = useState("");
+  const [commentaryPublic, setCommentaryPublic] = useState(false);
+  const [commentaryAt, setCommentaryAt] = useState("");
   const [notes, setNotes] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
   const [customVendor, setCustomVendor] = useState(false);
@@ -37,6 +40,9 @@ export function ModelDialog({ open, model = null, models = [], onClose, onSaved 
     setName(model?.name ?? "");
     setSlug(model?.slug ?? "");
     setVendor(model?.vendor ?? "");
+    setCommentary(model?.commentary ?? "");
+    setCommentaryPublic(model?.commentaryPublic ?? false);
+    setCommentaryAt(model?.commentaryAt ?? "");
     setNotes(model?.notes ?? "");
     setSlugTouched(Boolean(model));
     setCustomVendor(false);
@@ -90,6 +96,7 @@ export function ModelDialog({ open, model = null, models = [], onClose, onSaved 
       }
     }
     if (vendor.length > 80) next.vendor = "厂商不能超过 80 个字符";
+    if (commentary.length > 500) next.commentary = "评语不能超过 500 个字符";
     if (notes.length > 2000) next.notes = "备注不能超过 2000 个字符";
     return next;
   };
@@ -103,7 +110,14 @@ export function ModelDialog({ open, model = null, models = [], onClose, onSaved 
     setSaveError("");
     try {
       if (model) {
-        await api.updateModel(model.slug, { name: name.trim(), vendor: vendor.trim(), notes });
+        await api.updateModel(model.slug, {
+          name: name.trim(),
+          vendor: vendor.trim(),
+          notes,
+          commentary,
+          commentaryPublic,
+          commentaryAt,
+        });
         toast("模型已更新");
       } else {
         await api.createModel({ name: name.trim(), slug: slug.trim(), vendor: vendor.trim(), notes });
@@ -182,6 +196,39 @@ export function ModelDialog({ open, model = null, models = [], onClose, onSaved 
                 error={errors.vendor}
                 onChange={(event) => setVendor(event.target.value)}
               />
+            ) : null}
+            {model ? (
+              <>
+                <TextAreaField
+                  id="model-commentary"
+                  label="模型评语"
+                  value={commentary}
+                  maxLength={500}
+                  rows={3}
+                  error={errors.commentary}
+                  hint="公开后显示在详情页底部。"
+                  onChange={(event) => setCommentary(event.target.value)}
+                />
+                <TextField
+                  id="model-commentary-at"
+                  label="评语时间"
+                  type="date"
+                  value={commentaryAt}
+                  error={errors.commentaryAt}
+                  onChange={(event) => setCommentaryAt(event.target.value)}
+                />
+                <div>
+                  <label className={ui.checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={commentaryPublic}
+                      onChange={(event) => setCommentaryPublic(event.target.checked)}
+                    />
+                    公开显示
+                  </label>
+                  <p className={ui.hint}>关闭后仅管理员在详情页可见。</p>
+                </div>
+              </>
             ) : null}
             <TextAreaField
               id="model-notes"

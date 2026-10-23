@@ -251,7 +251,7 @@
   overflow-wrap: anywhere;
 }
 
-.private {
+.foot {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 24px;
@@ -260,7 +260,7 @@
   border-top: 1px solid var(--ink);
 }
 
-.privateHead {
+.footHead {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -270,12 +270,28 @@
   color: var(--ink-3);
 }
 
-.private p {
+.footText {
   font-size: 13px;
   line-height: 1.8;
   color: var(--ink-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.commentary {
+  font-size: 15px;
+  line-height: 1.85;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.commentaryTime {
+  margin-left: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
@@ -335,7 +351,7 @@
     display: none;
   }
 
-  .private {
+  .foot {
     grid-template-columns: 1fr;
     gap: 12px;
     margin-top: 32px;
