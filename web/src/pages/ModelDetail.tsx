@@ -110,7 +110,7 @@ export function ModelDetail() {
   const textDimensions = detail.dimensions.filter((dimension) => dimension.textMode);
   const storedRow = ordered.find((model) => model.slug === detail.slug);
   // displayModels appends the current model when the public ranking omits it.
-  const scoreModel = storedRow ?? displayModels[displayModels.length - 1];
+  const scoreModel = storedRow ?? selfModel;
 
   return (
     <div className="shell page-enter">

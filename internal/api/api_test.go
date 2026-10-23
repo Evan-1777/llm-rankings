@@ -782,11 +782,13 @@ func TestModelCommentaryVisibilityAndValidation(t *testing.T) {
 	}
 
 	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"commentary": strings.Repeat("字", 501)}, nil)
-	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "评语不能超过 500 个字符") {
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "评语不能超过 500 个字符") ||
+		!strings.Contains(string(body), `"fields":{"commentary"`) {
 		t.Fatalf("oversized commentary = %d %s", code, body)
 	}
 	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"commentaryAt": "2026-13-01"}, nil)
-	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "评语时间需为 YYYY-MM-DD") {
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "评语时间需为 YYYY-MM-DD") ||
+		!strings.Contains(string(body), `"fields":{"commentaryAt"`) {
 		t.Fatalf("invalid commentary date = %d %s", code, body)
 	}
 

@@ -96,12 +96,13 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     () => dimensions.filter((dimension) => !dimension.textMode && dimension.weight > 0),
     [dimensions],
   );
+  const firstNumericId = dimensions.find((dimension) => !dimension.textMode)?.id;
 
   useEffect(() => {
     if (!open || !detail) return;
-    if (scoreableDimensions.length > 0) firstInput.current?.focus();
+    if (firstNumericId != null) firstInput.current?.focus();
     else firstText.current?.focus();
-  }, [open, detail, scoreableDimensions.length]);
+  }, [open, detail, firstNumericId]);
 
   const updateRow = (id: number, patch: Partial<DraftRow>) => {
     setDraft((current) => ({
@@ -240,7 +241,6 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
   };
 
   const invalid = Object.keys(errors).length > 0;
-  const firstNumericId = scoreableDimensions[0]?.id;
   const firstTextId = dimensions.find((dimension) => dimension.textMode)?.id;
 
   return (

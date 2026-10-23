@@ -536,7 +536,7 @@ export function Settings() {
                   {model.scoredDimensions} / {scoreableDimensions.length}
                 </span>
                 <div className={styles.rowActions}>
-                  <IconButton label={`查看 ${model.name} 公开详情`} onClick={() => navigate(`/models/${model.slug}`)}>
+                  <IconButton label={`查看 ${model.name} 详情`} onClick={() => navigate(`/models/${model.slug}`)}>
                     <Icon name="arrowRight" />
                   </IconButton>
                   <IconButton label={`编辑模型：${model.name}`} onClick={() => openModel(model)}>
@@ -698,7 +698,7 @@ export function Settings() {
         <div className={styles.exportBox}>
           <div>
             <h2 className={styles.exportTitle}>导出 JSON</h2>
-            <p className={styles.exportText}>包含维度权重、归档项、模型私人备注与全部评分，可直接解析或备份。</p>
+            <p className={styles.exportText}>包含维度权重、归档项、模型评语、文字维度、私人备注与全部评分，可直接解析或备份。</p>
           </div>
           <Button variant="primary" onClick={() => void exportJSON()} disabled={exporting}>
             <Icon name="download" size={14} />
