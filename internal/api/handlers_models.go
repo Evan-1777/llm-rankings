@@ -269,6 +269,10 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
 	if patch.Notes != nil {
 		notes = *patch.Notes
 	}
+	hidden := current.Hidden
+	if patch.Hidden != nil {
+		hidden = *patch.Hidden
+	}
 	commentary, commentaryPublic, commentaryAt := current.Commentary, current.CommentaryPublic, current.CommentaryAt
 	if patch.Commentary != nil {
 		commentary = *patch.Commentary
@@ -295,27 +299,18 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查模型信息", fields)
 		return
 	}
-	updated := current
-	if patch.Name != nil || patch.Vendor != nil || patch.Notes != nil {
-		updated, err = s.store.UpdateModel(r.Context(), current.ID, name, vendor, notes)
-		if err != nil {
-			s.writeStoreError(w, err)
-			return
-		}
-	}
-	if patch.Hidden != nil {
-		updated, err = s.store.SetModelHidden(r.Context(), current.ID, *patch.Hidden)
-		if err != nil {
-			s.writeStoreError(w, err)
-			return
-		}
-	}
-	if commentaryChanged {
-		updated, err = s.store.SetModelCommentary(r.Context(), current.ID, commentary, commentaryPublic, commentaryAt)
-		if err != nil {
-			s.writeStoreError(w, err)
-			return
-		}
+	updated, err := s.store.UpdateModel(r.Context(), current.ID, store.ModelUpdate{
+		Name:             name,
+		Vendor:           vendor,
+		Notes:            notes,
+		Hidden:           hidden,
+		Commentary:       commentary,
+		CommentaryPublic: commentaryPublic,
+		CommentaryAt:     commentaryAt,
+	})
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, toModelResponse(updated))
 }

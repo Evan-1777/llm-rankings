@@ -9,9 +9,9 @@ import { PageHeading } from "../components/PageHeading";
 import { ScoreDialog } from "../components/ScoreDialog";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
-import { barWidth, dimensionMax, dimensionRanks, formatPercent, formatScore } from "../domain/ranking";
+import { barWidth, dimensionMax, dimensionRanks, formatPercent } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatMaxSharePercent, formatStrengthPercentile, scoreMax, scoreRange, strengthPercentile } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange, strengthPercentile } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -41,6 +41,7 @@ export function ModelDetail() {
   const navigate = useNavigate();
   const session = useSession();
   const { dimensionScoreEmphasis, scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
+  const displayMode = { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode };
   const [editOpen, setEditOpen] = useState(false);
   const { data, loading, error, reload } = useAsyncData(async (signal) => {
     const [detail, rankings] = await Promise.all([api.model(slug, signal), api.rankings(false, signal)]);
@@ -117,13 +118,9 @@ export function ModelDetail() {
       <PageHeading kicker={`${detail.vendor || "模型"} / 模型详情`} title={detail.name} titleClassName={styles.title}>
         <div className={styles.headSide}>
           <div className={styles.scoreLine}>
-            <span>{scorePercentageMode ? (scorePercentageMaxMode ? "综合占比" : "综合强度") : "综合分"}</span>
+            <span>{displayScoreLabel(displayMode, "综合分", "综合强度", "综合占比")}</span>
             <strong>
-              {scorePercentageMode
-                ? scorePercentageMaxMode
-                  ? formatMaxSharePercent(detail.score, compositeMax)
-                  : formatStrengthPercentile(detail.score, compositeRange)
-                : formatScore(detail.score)}
+              {formatDisplayScore(detail.score, displayMode, compositeRange, compositeMax)}
             </strong>
           </div>
           <div className={styles.facts}>
@@ -220,7 +217,7 @@ export function ModelDetail() {
                     <th scope="col">维度</th>
                     <th scope="col">权重</th>
                     <th scope="col" className={styles.num}>
-                      {scorePercentageMode ? (scorePercentageMaxMode ? "占比" : "强度") : "得分"}
+                      {displayScoreLabel(displayMode, "得分", "强度", "占比")}
                     </th>
                     <th scope="col" className={`${styles.rankCol} ${styles.num}`}>
                       维度排名

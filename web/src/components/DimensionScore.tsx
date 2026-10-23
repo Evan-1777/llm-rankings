@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 import type { ScoreRange } from "../lib/scoreEmphasis";
-import { formatMaxSharePercent, formatStrengthPercentile, scoreEmphasisTone } from "../lib/scoreEmphasis";
-import { useDisplayPreferences } from "../preferences/DisplayPreferences";
+import { formatDisplayScore, scoreEmphasisTone } from "../lib/scoreEmphasis";
 import { formatDimension } from "../domain/ranking";
+import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import styles from "./DimensionScore.module.css";
 
 interface DimensionScoreProps {
@@ -25,11 +25,13 @@ export function DimensionScore({ value, range, max, className }: DimensionScoreP
           "--tone-mix": `${Math.round(tone.strength * 100)}%`,
           "--tone-rule": low ? "var(--score-low-rule)" : "var(--score-high-rule)",
         } as CSSProperties);
-  const display = scorePercentageMode
-    ? scorePercentageMaxMode
-      ? formatMaxSharePercent(value, max)
-      : formatStrengthPercentile(value, range)
-    : formatDimension(value);
+  const display = formatDisplayScore(
+    value,
+    { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode },
+    range,
+    max,
+    formatDimension,
+  );
   return (
     <span className={[styles.score, tone ? styles.tone : "", className ?? ""].filter(Boolean).join(" ")} style={style}>
       {display}

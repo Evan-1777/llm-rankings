@@ -65,6 +65,21 @@ export interface ModelSummary {
   updatedAt: string;
 }
 
+/** Full model row returned by create/update/hide/archive; notes stay admin-only by route. */
+export interface ModelResponse {
+  slug: string;
+  name: string;
+  vendor: string;
+  notes: string;
+  hidden: boolean;
+  archivedAt: string | null;
+  commentary: string;
+  commentaryPublic: boolean;
+  commentaryAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ModelDimension {
   id: number;
   name: string;

@@ -497,6 +497,23 @@ func TestDisplaySettingsEndpoint(t *testing.T) {
 	}
 }
 
+func TestAPIResponsesAreNotCacheable(t *testing.T) {
+	e := newEnv(t)
+	code, _, headers := e.do(t, e.anon, http.MethodGet, "/api/bootstrap", nil, nil)
+	if code != http.StatusOK || headers.Get("Cache-Control") != "no-store" {
+		t.Fatalf("anonymous bootstrap cache = %d %q", code, headers.Get("Cache-Control"))
+	}
+	e.login(t)
+	code, _, headers = e.do(t, e.admin, http.MethodGet, "/api/models", nil, nil)
+	if code != http.StatusOK || headers.Get("Cache-Control") != "no-store" {
+		t.Fatalf("admin models cache = %d %q", code, headers.Get("Cache-Control"))
+	}
+	code, _, headers = e.do(t, e.anon, http.MethodGet, "/", nil, nil)
+	if code != http.StatusOK || headers.Get("Cache-Control") == "no-store" {
+		t.Fatalf("static index must keep its own cache policy: %d %q", code, headers.Get("Cache-Control"))
+	}
+}
+
 func TestMaintenanceGate(t *testing.T) {
 	e := newEnv(t)
 	e.login(t)

@@ -130,44 +130,22 @@ func (s *Store) CreateModel(ctx context.Context, slug, name, vendor, notes strin
 	return s.ModelBySlug(ctx, slug)
 }
 
-// UpdateModel updates the editable profile fields. Slugs are immutable.
-func (s *Store) UpdateModel(ctx context.Context, id int64, name, vendor, notes string) (Model, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE models SET name = ?, vendor = ?, notes = ?, updated_at = ? WHERE id = ?`,
-		name, vendor, notes, nowStamp(), id)
-	if err != nil {
-		return Model{}, err
-	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return Model{}, err
-	}
-	if affected == 0 {
-		return Model{}, ErrNotFound
-	}
-	return s.modelByID(ctx, id)
+// ModelUpdate carries every mutable model field in one write.
+type ModelUpdate struct {
+	Name             string
+	Vendor           string
+	Notes            string
+	Hidden           bool
+	Commentary       string
+	CommentaryPublic bool
+	CommentaryAt     string
 }
 
-// SetModelHidden toggles whether a model appears in public rankings.
-func (s *Store) SetModelHidden(ctx context.Context, id int64, hidden bool) (Model, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE models SET hidden = ?, updated_at = ? WHERE id = ?`,
-		hidden, nowStamp(), id)
-	if err != nil {
-		return Model{}, err
-	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return Model{}, err
-	}
-	if affected == 0 {
-		return Model{}, ErrNotFound
-	}
-	return s.modelByID(ctx, id)
-}
-
-// SetModelCommentary writes the public commentary fields as one unit.
-func (s *Store) SetModelCommentary(ctx context.Context, id int64, commentary string, public bool, at string) (Model, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE models SET commentary = ?, commentary_public = ?, commentary_at = ?, updated_at = ? WHERE id = ?`,
-		commentary, public, at, nowStamp(), id)
+// UpdateModel writes every mutable model field in one statement. Slugs are
+// immutable; callers merge partial patches with the current row first.
+func (s *Store) UpdateModel(ctx context.Context, id int64, update ModelUpdate) (Model, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE models SET name = ?, vendor = ?, notes = ?, hidden = ?, commentary = ?, commentary_public = ?, commentary_at = ?, updated_at = ? WHERE id = ?`,
+		update.Name, update.Vendor, update.Notes, update.Hidden, update.Commentary, update.CommentaryPublic, update.CommentaryAt, nowStamp(), id)
 	if err != nil {
 		return Model{}, err
 	}

@@ -16,6 +16,9 @@ type rankingSnapshot struct {
 	updatedAt  *time.Time
 }
 
+// loadRanking computes the full board in memory for each request. That is fine
+// for a personal deployment; add caching or incremental updates if the number
+// of scores grows past the low thousands.
 func (s *Server) loadRanking(ctx context.Context) (rankingSnapshot, error) {
 	dims, err := s.store.ListDimensions(ctx, false)
 	if err != nil {

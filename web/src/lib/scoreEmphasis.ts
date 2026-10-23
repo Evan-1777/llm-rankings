@@ -1,3 +1,5 @@
+import { formatScore } from "../domain/ranking.ts";
+
 export interface ScoreRow {
   scores: Record<string, number>;
 }
@@ -91,6 +93,34 @@ export function formatMaxSharePercent(value: number | null | undefined, max: num
   if (!best && rounded >= 100) rounded = 99.9;
   if (!best && value !== 0 && rounded <= 0) rounded = 0.1;
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+export interface ScoreDisplayMode {
+  percentage: boolean;
+  maxShare: boolean;
+}
+
+/** Chooses the active display formula once; pages must not nest the two mode flags. Actual values default to the two-decimal composite format; dimension cells pass formatDimension. */
+export function formatDisplayScore(
+  value: number | null | undefined,
+  mode: ScoreDisplayMode,
+  range: ScoreRange | null | undefined,
+  max: number | null | undefined,
+  actual: (value: number | null | undefined) => string = formatScore,
+): string {
+  if (!mode.percentage) return actual(value);
+  return mode.maxShare ? formatMaxSharePercent(value, max) : formatStrengthPercentile(value, range);
+}
+
+/** Chooses the label that matches the active percentage mode. */
+export function displayScoreLabel(
+  mode: ScoreDisplayMode,
+  actual: string,
+  strength: string,
+  maxShare: string,
+): string {
+  if (!mode.percentage) return actual;
+  return mode.maxShare ? maxShare : strength;
 }
 
 /** Tone of a score inside its range: warm red when low, cool blue when high, nothing near the middle. */

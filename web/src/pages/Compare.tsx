@@ -10,9 +10,9 @@ import { PageHeading } from "../components/PageHeading";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { dimensionMax, formatScore } from "../domain/ranking";
+import { dimensionMax } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatMaxSharePercent, formatStrengthPercentile, scoreMax, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange } from "../lib/scoreEmphasis";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -24,6 +24,7 @@ export function Compare() {
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
   const { scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
+  const displayMode = { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode };
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [candidate, setCandidate] = useState("");
@@ -65,7 +66,7 @@ export function Compare() {
   );
   const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
   const compositeMax = useMemo(() => scoreMax(models.map((model) => model.score)), [models]);
-  const compositeLabel = scorePercentageMaxMode ? "综合占比" : "综合强度";
+  const compositeLabel = displayScoreLabel(displayMode, "综合分", "综合强度", "综合占比");
   const percentageNote = scorePercentageMaxMode ? "100% = 同项最高分" : "100% = 最强";
 
   let content: ReactNode;
@@ -122,11 +123,7 @@ export function Compare() {
                     <div className={styles.modelScoreBlock}>
                       {scorePercentageMode ? <span className={styles.modelScoreLabel}>{compositeLabel}</span> : null}
                       <div className={styles.modelScore}>
-                        {scorePercentageMode
-                          ? scorePercentageMaxMode
-                            ? formatMaxSharePercent(model.score, compositeMax)
-                            : formatStrengthPercentile(model.score, compositeRange)
-                          : formatScore(model.score)}
+                        {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                       </div>
                     </div>
                     <div className={styles.coverageRow}>
@@ -178,11 +175,7 @@ export function Compare() {
                 <div className={styles.cardScoreValue}>
                   {scorePercentageMode ? <span className={styles.modelScoreLabel}>{compositeLabel}</span> : null}
                   <strong>
-                    {scorePercentageMode
-                      ? scorePercentageMaxMode
-                        ? formatMaxSharePercent(model.score, compositeMax)
-                        : formatStrengthPercentile(model.score, compositeRange)
-                      : formatScore(model.score)}
+                    {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                   </strong>
                 </div>
                 <Coverage coverage={model.coverage} provisional={model.provisional} />

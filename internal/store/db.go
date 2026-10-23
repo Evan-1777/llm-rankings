@@ -150,26 +150,20 @@ type Counts struct {
 	ScoredModels int
 }
 
-// MaxUpdatedAt returns the newest model or score timestamp, or nil when empty.
+// MaxUpdatedAt returns the newest timestamp across models, scores, dimensions
+// and dimension texts, or nil when the database is empty.
 func (s *Store) MaxUpdatedAt(ctx context.Context) (*time.Time, error) {
-	var modelMax, scoreMax sql.NullString
-	if err := s.db.QueryRowContext(ctx, `SELECT MAX(updated_at) FROM models`).Scan(&modelMax); err != nil {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(updated_at) FROM (
+		SELECT updated_at FROM models
+		UNION ALL SELECT updated_at FROM scores
+		UNION ALL SELECT updated_at FROM dimensions
+		UNION ALL SELECT updated_at FROM dimension_texts
+	)`).Scan(&raw)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT MAX(updated_at) FROM scores`).Scan(&scoreMax); err != nil {
-		return nil, err
-	}
-	var newest *time.Time
-	for _, raw := range []sql.NullString{modelMax, scoreMax} {
-		t, err := stampOrNil(raw)
-		if err != nil {
-			return nil, err
-		}
-		if t != nil && (newest == nil || t.After(*newest)) {
-			newest = t
-		}
-	}
-	return newest, nil
+	return stampOrNil(raw)
 }
 
 // Counts returns model, enabled-dimension and scored-model counts.

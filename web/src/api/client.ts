@@ -7,6 +7,7 @@ import type {
   ModelDetail,
   ModelInput,
   ModelPatch,
+  ModelResponse,
   ModelSummary,
   Rankings,
   ScoreResponse,
@@ -105,21 +106,21 @@ export const api = {
   model: (slug: string, signal?: AbortSignal) =>
     request<ModelDetail>(`/api/models/${encodeURIComponent(slug)}`, { signal }),
   createModel: (input: ModelInput) =>
-    request<{ slug: string }>("/api/models", { method: "POST", body: JSON.stringify(input) }),
+    request<ModelResponse>("/api/models", { method: "POST", body: JSON.stringify(input) }),
   updateModel: (slug: string, patch: ModelPatch) =>
-    request<{ slug: string }>(`/api/models/${encodeURIComponent(slug)}`, {
+    request<ModelResponse>(`/api/models/${encodeURIComponent(slug)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
   deleteModel: (slug: string) =>
     request<void>(`/api/models/${encodeURIComponent(slug)}`, { method: "DELETE" }),
   setModelHidden: (slug: string, hidden: boolean) =>
-    request<{ slug: string }>(`/api/models/${encodeURIComponent(slug)}`, {
+    request<ModelResponse>(`/api/models/${encodeURIComponent(slug)}`, {
       method: "PATCH",
       body: JSON.stringify({ hidden }),
     }),
   setModelArchived: (slug: string, archived: boolean) =>
-    request<{ slug: string }>(
+    request<ModelResponse>(
       `/api/models/${encodeURIComponent(slug)}/${archived ? "archive" : "restore"}`,
       { method: "POST" },
     ),

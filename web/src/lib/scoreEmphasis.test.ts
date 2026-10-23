@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { formatDimension } from "../domain/ranking.ts";
 import {
   dimensionScoreRanges,
+  displayScoreLabel,
+  formatDisplayScore,
   formatMaxSharePercent,
   formatStrengthPercentile,
   maxSharePercent,
@@ -93,6 +96,17 @@ test("rounding never disguises a non-extreme score as 1% or 100%", () => {
   assert.equal(formatStrengthPercentile(5, { min: 0, max: 10 }), "50.5%");
   assert.equal(formatStrengthPercentile(10, { min: 0, max: 10 }), "100%");
   assert.equal(formatStrengthPercentile(0, { min: 0, max: 10 }), "1%");
+});
+
+test("display score switches between actual, strength and max share once", () => {
+  const range = { min: 0, max: 10 };
+  assert.equal(formatDisplayScore(8.5, { percentage: false, maxShare: false }, range, 10), "8.50");
+  assert.equal(formatDisplayScore(5, { percentage: true, maxShare: false }, range, 10), "50.5%");
+  assert.equal(formatDisplayScore(5, { percentage: true, maxShare: true }, range, 10), "50%");
+  assert.equal(formatDisplayScore(8.5, { percentage: false, maxShare: false }, range, 10, formatDimension), "8.5");
+  assert.equal(displayScoreLabel({ percentage: false, maxShare: false }, "综合分", "综合强度", "综合占比"), "综合分");
+  assert.equal(displayScoreLabel({ percentage: true, maxShare: false }, "综合分", "综合强度", "综合占比"), "综合强度");
+  assert.equal(displayScoreLabel({ percentage: true, maxShare: true }, "综合分", "综合强度", "综合占比"), "综合占比");
 });
 
 test("scoreMax keeps the highest valid value and treats an empty set as zero", () => {

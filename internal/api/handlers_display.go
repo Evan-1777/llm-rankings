@@ -27,7 +27,6 @@ func toDisplaySettingsResponse(settings store.DisplaySettings) displaySettingsRe
 }
 
 func (s *Server) handleGetDisplaySettings(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
 	settings, err := s.store.DisplaySettings(r.Context())
 	if err != nil {
 		s.internalError(w, err)
@@ -37,7 +36,6 @@ func (s *Server) handleGetDisplaySettings(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handlePutDisplaySettings(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
 	var input displaySettingsInput
 	if !s.readJSON(w, r, &input) {
 		return

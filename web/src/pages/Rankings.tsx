@@ -13,9 +13,9 @@ import { SortButton } from "../components/SortButton";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { dimensionKey, dimensionMax, formatScore, sortRows, type SortDir } from "../domain/ranking";
+import { dimensionKey, dimensionMax, sortRows, type SortDir } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, formatMaxSharePercent, formatStrengthPercentile, scoreMax, scoreRange } from "../lib/scoreEmphasis";
+import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -80,6 +80,7 @@ export function Rankings() {
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
   const { dimensionScoreEmphasis, scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
+  const displayMode = { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode };
   const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -133,8 +134,8 @@ export function Rankings() {
 
   const openSettings = () => navigate("/settings?tab=dimensions");
 
-  const compositeLabel = scorePercentageMode ? (scorePercentageMaxMode ? "综合占比" : "综合强度") : "综合分";
-  const percentageLabel = scorePercentageMaxMode ? "最高分占比" : "相对强度";
+  const compositeLabel = displayScoreLabel(displayMode, "综合分", "综合强度", "综合占比");
+  const percentageLabel = displayScoreLabel(displayMode, "加权平均", "相对强度", "最高分占比");
   const compositeNote = !scorePercentageMode
     ? "加权平均 / 全部模型"
     : scorePercentageMaxMode
@@ -260,11 +261,7 @@ export function Rankings() {
                         <span className={styles.vendor}>{model.vendor || "—"}</span>
                       </td>
                       <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
-                        {scorePercentageMode
-                          ? scorePercentageMaxMode
-                            ? formatMaxSharePercent(model.score, compositeMax)
-                            : formatStrengthPercentile(model.score, compositeRange)
-                          : formatScore(model.score)}
+                        {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                       </td>
                       <td className={styles.td}>
                         <Coverage coverage={model.coverage} provisional={model.provisional} />
@@ -309,7 +306,7 @@ export function Rankings() {
               <span className={styles.footMark} aria-hidden="true" />
               覆盖率低于 80% 标记为暂定
             </p>
-            <p>权重合计 {data.totalWeight} / {scorePercentageMode ? percentageLabel : "加权平均"}</p>
+            <p>权重合计 {data.totalWeight} / {percentageLabel}</p>
           </div>
         </>
       );

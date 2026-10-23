@@ -14,6 +14,18 @@ import (
 
 func notePtr(value string) *string { return &value }
 
+func modelUpdate(m Model) ModelUpdate {
+	return ModelUpdate{
+		Name:             m.Name,
+		Vendor:           m.Vendor,
+		Notes:            m.Notes,
+		Hidden:           m.Hidden,
+		Commentary:       m.Commentary,
+		CommentaryPublic: m.CommentaryPublic,
+		CommentaryAt:     m.CommentaryAt,
+	}
+}
+
 func openTest(t *testing.T) (*Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
@@ -111,6 +123,9 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
 	d, _ := s.CreateDimension(ctx, "Quality", "", 100, false)
+	if stamp, err := s.MaxUpdatedAt(ctx); err != nil || stamp == nil {
+		t.Fatalf("dimension must update max timestamp: %v %v", stamp, err)
+	}
 
 	m, err := s.CreateModel(ctx, "gpt-5", "GPT-5", "OpenAI", "private")
 	if err != nil {
@@ -119,7 +134,9 @@ func TestModelAndScoreLifecycle(t *testing.T) {
 	if _, err := s.CreateModel(ctx, "GPT-5", "Other", "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate slug error = %v", err)
 	}
-	if _, err := s.UpdateModel(ctx, m.ID, "GPT-5", "OpenAI", "updated private"); err != nil {
+	update := modelUpdate(m)
+	update.Notes = "updated private"
+	if _, err := s.UpdateModel(ctx, m.ID, update); err != nil {
 		t.Fatalf("update model: %v", err)
 	}
 	updated, _ := s.ModelBySlug(ctx, "gpt-5")
@@ -177,7 +194,11 @@ func TestModelCommentaryStorage(t *testing.T) {
 	if m.Commentary != "" || m.CommentaryPublic || m.CommentaryAt != "" {
 		t.Fatalf("new model commentary defaults = %+v", m)
 	}
-	updated, err := s.SetModelCommentary(ctx, m.ID, "第一段\nsecond line", true, "2026-10-23")
+	patch := modelUpdate(m)
+	patch.Commentary = "第一段\nsecond line"
+	patch.CommentaryPublic = true
+	patch.CommentaryAt = "2026-10-23"
+	updated, err := s.UpdateModel(ctx, m.ID, patch)
 	if err != nil {
 		t.Fatalf("set commentary: %v", err)
 	}
@@ -194,15 +215,21 @@ func TestModelCommentaryStorage(t *testing.T) {
 		t.Fatalf("ListModels commentary = %+v, %v", list, err)
 	}
 
-	overwritten, err := s.SetModelCommentary(ctx, m.ID, "重写", false, "")
+	patch = modelUpdate(updated)
+	patch.Commentary = "重写"
+	patch.CommentaryPublic = false
+	patch.CommentaryAt = ""
+	overwritten, err := s.UpdateModel(ctx, m.ID, patch)
 	if err != nil || overwritten.Commentary != "重写" || overwritten.CommentaryPublic || overwritten.CommentaryAt != "" {
 		t.Fatalf("overwrite commentary = %+v, %v", overwritten, err)
 	}
-	cleared, err := s.SetModelCommentary(ctx, m.ID, "", false, "")
+	patch = modelUpdate(overwritten)
+	patch.Commentary = ""
+	cleared, err := s.UpdateModel(ctx, m.ID, patch)
 	if err != nil || cleared.Commentary != "" || cleared.CommentaryPublic || cleared.CommentaryAt != "" {
 		t.Fatalf("clear commentary = %+v, %v", cleared, err)
 	}
-	if _, err := s.SetModelCommentary(ctx, m.ID+999, "x", false, ""); !errors.Is(err, ErrNotFound) {
+	if _, err := s.UpdateModel(ctx, m.ID+999, modelUpdate(cleared)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing model commentary error = %v", err)
 	}
 }
@@ -513,7 +540,9 @@ func TestModelVisibilityAndArchive(t *testing.T) {
 	if m.Hidden || m.ArchivedAt != nil {
 		t.Fatalf("new model must default to visible and active: %+v", m)
 	}
-	hidden, err := s.SetModelHidden(ctx, m.ID, true)
+	patch := modelUpdate(m)
+	patch.Hidden = true
+	hidden, err := s.UpdateModel(ctx, m.ID, patch)
 	if err != nil || !hidden.Hidden {
 		t.Fatalf("hide: %+v %v", hidden, err)
 	}
@@ -543,7 +572,9 @@ func TestModelVisibilityAndArchive(t *testing.T) {
 	if err != nil || restored.ArchivedAt != nil {
 		t.Fatalf("restore: %+v %v", restored, err)
 	}
-	shown, err := s.SetModelHidden(ctx, m.ID, false)
+	patch = modelUpdate(restored)
+	patch.Hidden = false
+	shown, err := s.UpdateModel(ctx, m.ID, patch)
 	if err != nil || shown.Hidden {
 		t.Fatalf("show: %+v %v", shown, err)
 	}
