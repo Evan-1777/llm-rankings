@@ -209,6 +209,7 @@ tbody tr:last-child .td {
   font-size: 14px;
   line-height: 1.75;
   color: var(--ink-3);
+  overflow-wrap: anywhere;
 }
 
 .notes p,
@@ -276,7 +277,6 @@ tbody tr:last-child .td {
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
-  overflow-wrap: anywhere;
 }
 
 .notes code {

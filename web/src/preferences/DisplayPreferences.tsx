@@ -73,39 +73,33 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     setRankingNotes(settings.rankingNotes);
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .displaySettings(controller.signal)
-      .then((settings) => {
-        applySettings(settings);
+  // A read failure keeps the default absolute scores and must not block the page.
+  const loadSettings = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        applySettings(await api.displaySettings(signal));
         setReadError(null);
-      })
-      // A read failure keeps the default absolute scores and must not block the page.
-      .catch((error: unknown) => {
+      } catch (error) {
         if (error instanceof Error && error.name === "AbortError") return;
         setReadError(error instanceof Error ? error : new Error("加载失败"));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
+      }
+    },
+    [applySettings],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSettings(controller.signal).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
     return () => controller.abort();
-  }, [applySettings]);
+  }, [loadSettings]);
 
   const retryRead = useCallback(() => {
     if (retrying) return;
     setRetrying(true);
-    api
-      .displaySettings()
-      .then((settings) => {
-        applySettings(settings);
-        setReadError(null);
-      })
-      .catch((error: unknown) => {
-        setReadError(error instanceof Error ? error : new Error("加载失败"));
-      })
-      .finally(() => setRetrying(false));
-  }, [applySettings, retrying]);
+    void loadSettings().finally(() => setRetrying(false));
+  }, [loadSettings, retrying]);
 
   const setDimensionScoreEmphasis = useCallback(
     (value: boolean) => {

@@ -79,6 +79,7 @@ export function Settings() {
   const [exporting, setExporting] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [notesReady, setNotesReady] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
   const [notesError, setNotesError] = useState("");
   const promptOpen = useRef(false);
   const [drag, setDrag] = useState<{ id: number; over: number | null } | null>(null);
@@ -279,11 +280,13 @@ export function Settings() {
   );
 
   const notesDirty = notesReady && notesDraft !== rankingNotes;
+  // An in-flight save clears notesDirty optimistically; keep guarding until it settles.
+  const notesPending = notesDirty || notesSaving;
   const blocker = useBlocker(
     useCallback(
       ({ currentLocation, nextLocation }: { currentLocation: Location; nextLocation: Location }) =>
-        notesDirty && currentLocation.pathname !== nextLocation.pathname,
-      [notesDirty],
+        notesPending && currentLocation.pathname !== nextLocation.pathname,
+      [notesPending],
     ),
   );
 
@@ -309,14 +312,14 @@ export function Settings() {
   }, [blocker, confirm]);
 
   useEffect(() => {
-    if (!notesDirty) return;
+    if (!notesPending) return;
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [notesDirty]);
+  }, [notesPending]);
 
   const openNewDimension = () => {
     setDimensionEdit(null);
@@ -405,13 +408,18 @@ export function Settings() {
   const saveNotes = async () => {
     if (!notesDirty || displayLoading || displaySaving || readError) return;
     setNotesError("");
-    const result = await saveRankingNotes(notesDraft);
-    if (result.ok) {
-      toast("已保存");
-      return;
+    setNotesSaving(true);
+    try {
+      const result = await saveRankingNotes(notesDraft);
+      if (result.ok) {
+        toast("已保存");
+        return;
+      }
+      const fieldError = result.fields?.rankingNotes;
+      if (fieldError) setNotesError(fieldError);
+    } finally {
+      setNotesSaving(false);
     }
-    const fieldError = result.fields?.rankingNotes;
-    if (fieldError) setNotesError(fieldError);
   };
 
   const exportJSON = async () => {
