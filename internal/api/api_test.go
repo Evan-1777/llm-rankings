@@ -422,23 +422,34 @@ func TestPutScoreKeepsNoteWhenOmitted(t *testing.T) {
 func TestDisplaySettingsEndpoint(t *testing.T) {
 	e := newEnv(t)
 	path := "/api/display-settings"
-	settings := func(percentage, percentageMax, maintenance bool) map[string]any {
+	settings := func(percentage, percentageMax, maintenance bool, notes string) map[string]any {
 		return map[string]any{
 			"scorePercentageMode":    percentage,
 			"scorePercentageMaxMode": percentageMax,
 			"maintenanceMode":        maintenance,
+			"rankingNotes":           notes,
 		}
+	}
+	notesOf := func(t *testing.T, body []byte) string {
+		t.Helper()
+		var payload struct {
+			RankingNotes string `json:"rankingNotes"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode rankingNotes: %v", err)
+		}
+		return payload.RankingNotes
 	}
 
 	code, body, header := e.do(t, e.anon, http.MethodGet, path, nil, nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) || !strings.Contains(string(body), `"scorePercentageMaxMode":false`) || !strings.Contains(string(body), `"maintenanceMode":false`) {
+	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) || !strings.Contains(string(body), `"scorePercentageMaxMode":false`) || !strings.Contains(string(body), `"maintenanceMode":false`) || !strings.Contains(string(body), `"rankingNotes":""`) {
 		t.Fatalf("anonymous default = %d %s", code, body)
 	}
 	if header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("GET cache-control = %q", header.Get("Cache-Control"))
 	}
 
-	code, _, _ = e.do(t, e.anon, http.MethodPut, path, settings(true, false, true), nil)
+	code, _, _ = e.do(t, e.anon, http.MethodPut, path, settings(true, false, true, ""), nil)
 	if code != http.StatusUnauthorized {
 		t.Fatalf("anonymous put = %d, want 401", code)
 	}
@@ -456,6 +467,26 @@ func TestDisplaySettingsEndpoint(t *testing.T) {
 	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "maintenanceMode") {
 		t.Fatalf("missing maintenance = %d %s, want 422", code, body)
 	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{
+		"scorePercentageMode": true, "scorePercentageMaxMode": true, "maintenanceMode": false,
+	}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "rankingNotes") {
+		t.Fatalf("missing notes = %d %s, want 422", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{
+		"scorePercentageMode": true, "scorePercentageMaxMode": true, "maintenanceMode": false, "rankingNotes": nil,
+	}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "rankingNotes") {
+		t.Fatalf("null notes = %d %s, want 422", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, settings(true, true, false, strings.Repeat("a", 20001)), nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "rankingNotes") {
+		t.Fatalf("too long notes = %d %s, want 422", code, body)
+	}
+	code, body, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || strings.Contains(string(body), `"scorePercentageMode":true`) || notesOf(t, body) != "" {
+		t.Fatalf("failed validation changed settings = %d %s", code, body)
+	}
 	code, _, _ = e.do(t, e.admin, http.MethodPut, path, map[string]any{
 		"scorePercentageMode":    true,
 		"scorePercentageMaxMode": false,
@@ -465,12 +496,13 @@ func TestDisplaySettingsEndpoint(t *testing.T) {
 	if code != http.StatusBadRequest {
 		t.Fatalf("unknown field = %d, want 400", code)
 	}
-	code, _, _ = e.do(t, e.admin, http.MethodPut, path, settings(true, false, true), map[string]string{"Origin": "https://evil.test"})
+	code, _, _ = e.do(t, e.admin, http.MethodPut, path, settings(true, false, true, ""), map[string]string{"Origin": "https://evil.test"})
 	if code != http.StatusForbidden {
 		t.Fatalf("cross-origin put = %d, want 403", code)
 	}
 
-	code, body, header = e.do(t, e.admin, http.MethodPut, path, settings(true, true, false), nil)
+	notes := "# 评审规则\n\n- 只比较同价位模型\n- 引用以官方文档为准\n"
+	code, body, header = e.do(t, e.admin, http.MethodPut, path, settings(true, true, false, notes), nil)
 	if code != http.StatusOK ||
 		!strings.Contains(string(body), `"scorePercentageMode":true`) ||
 		!strings.Contains(string(body), `"scorePercentageMaxMode":true`) ||
@@ -484,16 +516,22 @@ func TestDisplaySettingsEndpoint(t *testing.T) {
 	if code != http.StatusOK ||
 		!strings.Contains(string(body), `"scorePercentageMode":true`) ||
 		!strings.Contains(string(body), `"scorePercentageMaxMode":true`) ||
-		!strings.Contains(string(body), `"maintenanceMode":false`) {
+		!strings.Contains(string(body), `"maintenanceMode":false`) ||
+		notesOf(t, body) != notes {
 		t.Fatalf("anonymous read after write = %d %s", code, body)
 	}
-	code, body, _ = e.do(t, e.admin, http.MethodPut, path, settings(false, false, true), nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"scorePercentageMode":false`) || !strings.Contains(string(body), `"maintenanceMode":true`) {
-		t.Fatalf("maintenance only = %d %s", code, body)
+	boundary := strings.Repeat("🙂", 20000)
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, settings(false, false, true, boundary), nil)
+	if code != http.StatusOK || notesOf(t, body) != boundary {
+		t.Fatalf("boundary notes = %d, want 20000 code points accepted", code)
 	}
-	code, body, _ = e.do(t, e.admin, http.MethodPut, path, settings(false, false, false), nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"maintenanceMode":false`) {
-		t.Fatalf("disable = %d %s", code, body)
+	code, body, _ = e.do(t, e.anon, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK || notesOf(t, body) != boundary || !strings.Contains(string(body), `"maintenanceMode":true`) {
+		t.Fatalf("boundary notes after read = %d", code)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, path, settings(false, false, false, ""), nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"maintenanceMode":false`) || notesOf(t, body) != "" {
+		t.Fatalf("clear notes = %d %s", code, body)
 	}
 }
 
@@ -524,6 +562,7 @@ func TestMaintenanceGate(t *testing.T) {
 			"scorePercentageMode":    percentage,
 			"scorePercentageMaxMode": false,
 			"maintenanceMode":        maintenance,
+			"rankingNotes":           "",
 		}, nil)
 		if code != http.StatusOK {
 			t.Fatalf("set maintenance=%v = %d %s", maintenance, code, body)

@@ -16,7 +16,7 @@
 - **平台**：Linux x86_64（WSL 文件系统），开发与测试在本机；生产为个人 VPS。
 - **运行时**：Go 1.27；Node 24 + pnpm 11.23；SQLite（`modernc.org/sqlite`，纯 Go，无 CGO）；React 19 + TypeScript 7 + Vite 8。
 - **版本管理**：git；远端 [Evan-1777/llm-rankings](https://github.com/Evan-1777/llm-rankings)（公开）；`master` 为当前分支。
-- **依赖**：Go 模块（`go.mod` / `go.sum`）；前端 pnpm（`web/pnpm-lock.yaml`）。生产镜像由 CI 构建，本机无 Docker。
+- **依赖**：Go 模块（`go.mod` / `go.sum`）；前端 pnpm（`web/pnpm-lock.yaml`），Markdown 渲染使用 `react-markdown` 10.1.0，不引入 GFM、代码高亮或 UI 组件库。生产镜像由 CI 构建，本机无 Docker。
 - **本地运行**：
   1. `pnpm --dir web install`
   2. `pnpm --dir web build`（写入 `web/dist`，供 Go 内嵌）
@@ -59,6 +59,7 @@ migrations/
   006_dimension_text_mode.sql  # 维度文字模式与模型文字表
   007_model_commentary.sql     # 模型评语、公开标记与评语日期
   008_score_percentage_max.sql # 最高分占比开关
+  009_ranking_notes.sql        # 排行榜备注正文
   embed.go                     # 迁移文件内嵌
 web/
   src/api/                     # fetch 客户端与类型
@@ -92,7 +93,7 @@ Dockerfile
 - `GET /api/health`
 - `GET /api/bootstrap`
 - `POST /api/auth/login`、`POST /api/auth/logout`
-- `GET /api/display-settings`（公共）；`PUT /api/display-settings`（管理员，需同时提交三个开关：`scorePercentageMode`、`scorePercentageMaxMode`、`maintenanceMode`）
+- `GET /api/display-settings`（公共）；`PUT /api/display-settings`（管理员，需同时提交三个开关 `scorePercentageMode`、`scorePercentageMaxMode`、`maintenanceMode` 与必传字符串 `rankingNotes`；缺失或超 20,000 个 Unicode 码点返回字段级 422，正文不 trim）
 
 #### 排行
 - `GET /api/rankings`；`GET /api/rankings?includeHidden=1`（管理员，隐藏行保留分值与 `hidden: true`，名次为空）
@@ -119,7 +120,7 @@ Dockerfile
 - `models`：唯一 slug、名称、厂商、私人备注、`hidden` 0/1、`archived_at`、`commentary`、`commentary_public` 0/1、`commentary_at`。
 - `scores`：模型 + 维度复合主键、非负 REAL、备注、更新时间。
 - `dimension_texts`：模型 + 文字维度复合主键、内容、更新时间。
-- `display_settings`：单例 `id = 1`、`score_percentage_mode` 0/1、`score_percentage_max_mode` 0/1、`maintenance_mode` 0/1。
+- `display_settings`：单例 `id = 1`、`score_percentage_mode` 0/1、`score_percentage_max_mode` 0/1、`maintenance_mode` 0/1、`ranking_notes`（默认空串的 Markdown 正文）。
 - 表间外键级联；不插入种子数据；展示位置按原 ID 初始化，新建追加末尾。
 
 ### 评分与排名
@@ -161,11 +162,11 @@ Dockerfile
 
 ### 页面结构
 
-- **排行**：表头即排序控件；评分通过共享评分弹窗或工作台快捷编辑；模型只通过共享模型表单创建；顶部统计展示维度、权重、模型、已评分与更新时间。
+- **排行**：表头即排序控件；评分通过共享评分弹窗或工作台快捷编辑；模型只通过共享模型表单创建；顶部统计展示维度、权重、模型、已评分与更新时间。站点备注在榜单主体与表脚之后、对比浮条之前以 14px/1.75 弱色正文展示，空内容不渲染区域，加载或请求失败不拿备注充当反馈。
 - **详情**：同时展示综合排名与逐维度名次；文字维度在数值表下方独立阅读，其后依次为模型评语与管理员私人备注；隐藏模型无对比入口与下一步导航。
 - **对比**：最多 4 个模型，移动端改为纵向卡片；候选从当前排行派生。
 - **工作台**：语义表格，维度分值常驻并可按表头排序；默认覆盖率升序暴露补测优先级；隐藏模型浅灰置于可见行之后。
-- **设置**：独立于排行，分区为维度、模型、数据、显示；模型分区拆分启用与归档并常驻底部归档区；维度支持拖动或方向键排序。
+- **设置**：独立于排行，分区为维度、模型、数据、显示；模型分区拆分启用与归档并常驻底部归档区；维度支持拖动或方向键排序。显示分区末尾提供带标签的 Markdown 备注文本框与显式保存按钮，草稿不自动发布；未保存离开拦截站内路径跳转与刷新，内部 tab 切换不拦截。
 - **状态**：每页具备加载骨架、错误重试、空状态与成功反馈；站点设置尚未返回时先显示加载占位；无数据时给出下一步入口；空态只依据本页已加载数据，bootstrap 计数仅作加载前占位。
 
 ### 显示口径
@@ -252,13 +253,15 @@ Dockerfile
 - 快捷编辑按差分串行保存，不新增批量接口；省略备注的评分 PUT 保留原备注；评分删除幂等。
 - 登录入口只保留直接 URL；不新增页面级路径判断、登录开关或后端认证改动。
 - 维护模式复用 `display_settings` 单例，门禁放在 API 中间件；不新增服务端 HTML 模板。
+- 排行榜备注复用同一单例与完整 PUT，不新增资源或路由；服务端按 Unicode 码点限制 20,000 字符以约束公开配置载荷，前端不设 `maxLength`，超限错误回填文本框。
+- Markdown 仅 CommonMark 文本结构，由 `react-markdown` 渲染；跳过原始 HTML 与图片，沿用解析器默认安全 URL 处理，不引入 GFM、代码高亮或额外清洗插件。读取失败时设置页禁止以默认值覆盖服务器内容，重试使用独立状态且不卸载页面。
 - 安全控制按单管理员威胁模型：bcrypt 环境变量、HMAC Cookie、登录限流、Origin 校验、CSP 与 API no-store；不引入用户体系或额外密钥管理。
 - 前端不引入组件库、图表库与外部字体；以 CSS Modules 和设计令牌维持视觉一致性。
 
 ## 验证与归档
 
-- 交付前基线：`go test ./...`、`go vet ./...`、`CGO_ENABLED=0 go build ./cmd/server`、`pnpm --dir web test`、`pnpm --dir web typecheck`、`pnpm --dir web build`。
-- 最近验证（10-23-v4）：文档重构；后端测试、vet 与静态构建通过；前端 50/50 通过，typecheck 与 build 通过。
+- 交付前基线：`go test ./...`、`go vet ./...`、`CGO_ENABLED=0 go build ./cmd/server`、`pnpm --dir web test`、`pnpm --dir web typecheck`、`pnpm --dir web build`。前端构建须先于最终 Go 二进制构建，确保内嵌 `web/dist` 是本次产物。
+- 最近验证（10-24-v1）：排行榜 Markdown 备注；后端测试、vet 与静态构建通过；前端 54/54 通过，typecheck 与 build 通过；浏览器验收覆盖空态与完整榜单、360/390/768/1440 视口、匿名读取、读取失败重试、保存失败草稿保留、字段错误与离开保护。
 - 逐轮测试、浏览器验收、任务与计划记录按日期归档在 `.docs/`；本文件只保留可复用的验证基线与当前结论，不复制历史日志。
 
 ## 外部集成
@@ -280,6 +283,8 @@ Dockerfile
 - 维护模式期间会话过期后 API 返回 503，需要刷新页面才能回到维护页；不追加客户端自动刷新。
 - 浏览器验收为手工执行，无端到端自动化；Go/前端纯函数与 HTTP 集成测试覆盖主要规则；真实触屏手势需人工验收。
 - 显示模式为站点级偏好，其他已打开页面刷新后生效，不做实时推送；`/api/rankings` 与 `/api/export` 仍返回绝对分值，若要求对外不披露原始分需服务端过滤，属另一轮范围。
+- 排行榜备注为纯文本 Markdown：不支持图片、GFM 表格/任务列表、数学公式与原始 HTML；超长错误只在设置页显示，不提供字符计数器。
+- JSON 导出不含显示设置与排行榜备注，完整备份以数据卷为准。
 - 色阶仍按实际得分 min/max 定位；全同分维度没有有效区间，保持无底色。
 - 排名按请求全量载入并计算，详情页客户端与服务端各计算一次；个人规模可接受，模型或评分增长后需缓存或合并请求。
 - 本机无 Docker，镜像与 Compose 的实际启动需在 CI/VPS 验证。
@@ -297,6 +302,7 @@ Dockerfile
 - **模型评语**：模型档案中的独立公开文本，带公开开关与手填日期；公开后显示在详情页底部，未公开时仅管理员可见。
 - **文字维度**：以一段自由文本代替数值评分的维度，权重固定为 0，只在详情页展示、评分弹窗录入，不参与任何计算。
 - **归档**：模型或维度从列表、展示与计算中移除但保留数据，可恢复；与永久删除不同。
+- **排行榜备注**：站点级、公开只读的 Markdown 正文，由管理员在显示设置中显式保存；空内容不渲染。
 
 ## 维护
 

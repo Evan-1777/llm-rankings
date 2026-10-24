@@ -8,12 +8,13 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/domain/ranking.test.ts src/domain/scoreInput.test.ts src/domain/quickEdit.test.ts src/pages/dimensionOrder.test.ts src/lib/scoreEmphasis.test.ts src/preferences/preferenceStorage.test.ts",
+    "test": "node --test src/domain/ranking.test.ts src/domain/scoreInput.test.ts src/domain/quickEdit.test.ts src/pages/dimensionOrder.test.ts src/lib/scoreEmphasis.test.ts src/preferences/preferenceStorage.test.ts src/components/RankingNotes.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
     "react-router-dom": "7.18.4"
   },
   "devDependencies": {

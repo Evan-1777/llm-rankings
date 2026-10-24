@@ -469,8 +469,13 @@ func TestDisplaySettingsDefaultsAndPersists(t *testing.T) {
 	if settings, err = s.DisplaySettings(ctx); err != nil || settings != (DisplaySettings{}) {
 		t.Fatalf("disabled = %+v, %v", settings, err)
 	}
-	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{MaintenanceMode: true}); err != nil {
-		t.Fatalf("re-enable: %v", err)
+
+	notes := "# 评审规则\n\n- 只比较同价位模型\n- 引用以官方文档为准\n"
+	if err := s.UpdateDisplaySettings(ctx, DisplaySettings{ScorePercentageMode: true, RankingNotes: notes}); err != nil {
+		t.Fatalf("write notes: %v", err)
+	}
+	if settings, err = s.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || settings.RankingNotes != notes {
+		t.Fatalf("notes round-trip = %+v, %v", settings, err)
 	}
 	s.Close()
 
@@ -478,9 +483,62 @@ func TestDisplaySettingsDefaultsAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	defer reopened.Close()
-	if settings, err = reopened.DisplaySettings(ctx); err != nil || settings.ScorePercentageMode || !settings.MaintenanceMode {
-		t.Fatalf("after reopen = %+v, %v", settings, err)
+	if settings, err = reopened.DisplaySettings(ctx); err != nil || !settings.ScorePercentageMode || settings.RankingNotes != notes {
+		t.Fatalf("notes after reopen = %+v, %v", settings, err)
+	}
+	if err := reopened.UpdateDisplaySettings(ctx, DisplaySettings{MaintenanceMode: true}); err != nil {
+		t.Fatalf("clear notes: %v", err)
+	}
+	reopened.Close()
+
+	cleared, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen cleared: %v", err)
+	}
+	defer cleared.Close()
+	if settings, err = cleared.DisplaySettings(ctx); err != nil || settings.ScorePercentageMode || !settings.MaintenanceMode || settings.RankingNotes != "" {
+		t.Fatalf("cleared after reopen = %+v, %v", settings, err)
+	}
+}
+
+func TestRankingNotesMigrationKeepsLegacySettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open legacy: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"001_init.sql", "002_dimension_order.sql", "003_display_settings.sql",
+		"004_maintenance_mode.sql", "005_model_visibility_archive.sql", "006_dimension_text_mode.sql",
+		"007_model_commentary.sql", "008_score_percentage_max.sql",
+	} {
+		body, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(body)); err != nil {
+			t.Fatalf("legacy migration %s: %v", name, err)
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`, name, nowStamp()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO display_settings (id, score_percentage_mode, score_percentage_max_mode, maintenance_mode) VALUES (1, 1, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open migrated store: %v", err)
+	}
+	defer s.Close()
+	settings, err := s.DisplaySettings(context.Background())
+	if err != nil || !settings.ScorePercentageMode || !settings.ScorePercentageMaxMode || !settings.MaintenanceMode || settings.RankingNotes != "" {
+		t.Fatalf("legacy settings after migration = %+v, %v", settings, err)
 	}
 }
 

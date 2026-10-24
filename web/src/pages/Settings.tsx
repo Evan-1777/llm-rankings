@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useBlocker, useNavigate, useSearchParams, type Location } from "react-router-dom";
 import { ApiError, api, errorMessage } from "../api/client";
 import type { Dimension, ModelSummary } from "../api/types";
 import { Button, IconButton } from "../components/Button";
 import { useConfirm } from "../components/Confirm";
 import { DimensionDialog } from "../components/DimensionDialog";
+import { TextAreaField } from "../components/Field";
 import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
 import { PageHeading } from "../components/PageHeading";
@@ -58,6 +59,11 @@ export function Settings() {
     setScorePercentageMaxMode,
     maintenanceMode,
     setMaintenanceMode,
+    rankingNotes,
+    saveRankingNotes,
+    readError,
+    retrying,
+    retryRead,
     loading: displayLoading,
     saving: displaySaving,
   } = useDisplayPreferences();
@@ -71,6 +77,10 @@ export function Settings() {
   const [modelOpen, setModelOpen] = useState(false);
   const [modelEdit, setModelEdit] = useState<ModelSummary | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [notesReady, setNotesReady] = useState(false);
+  const [notesError, setNotesError] = useState("");
+  const promptOpen = useRef(false);
   const [drag, setDrag] = useState<{ id: number; over: number | null } | null>(null);
   const dragRef = useRef<{ pointerId: number; id: number; from: number; over: number | null; y: number; raf: number | null } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -268,6 +278,46 @@ export function Settings() {
     [],
   );
 
+  const notesDirty = notesReady && notesDraft !== rankingNotes;
+  const blocker = useBlocker(
+    useCallback(
+      ({ currentLocation, nextLocation }: { currentLocation: Location; nextLocation: Location }) =>
+        notesDirty && currentLocation.pathname !== nextLocation.pathname,
+      [notesDirty],
+    ),
+  );
+
+  useEffect(() => {
+    if (displayLoading || readError || notesReady) return;
+    setNotesDraft(rankingNotes);
+    setNotesReady(true);
+  }, [displayLoading, notesReady, rankingNotes, readError]);
+
+  useEffect(() => {
+    if (blocker.state !== "blocked" || promptOpen.current) return;
+    promptOpen.current = true;
+    void confirm({
+      title: "离开设置？",
+      body: "排行榜备注尚未保存，离开后修改将丢失。",
+      confirmLabel: "放弃并离开",
+      danger: true,
+    }).then((confirmed) => {
+      promptOpen.current = false;
+      if (confirmed) blocker.proceed();
+      else blocker.reset();
+    });
+  }, [blocker, confirm]);
+
+  useEffect(() => {
+    if (!notesDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [notesDirty]);
+
   const openNewDimension = () => {
     setDimensionEdit(null);
     setDimensionOpen(true);
@@ -350,6 +400,18 @@ export function Settings() {
     } catch (caught) {
       toast(errorMessage(caught), "error");
     }
+  };
+
+  const saveNotes = async () => {
+    if (!notesDirty || displayLoading || displaySaving || readError) return;
+    setNotesError("");
+    const result = await saveRankingNotes(notesDraft);
+    if (result.ok) {
+      toast("已保存");
+      return;
+    }
+    const fieldError = result.fields?.rankingNotes;
+    if (fieldError) setNotesError(fieldError);
   };
 
   const exportJSON = async () => {
@@ -603,6 +665,14 @@ export function Settings() {
             <span className={ui.sectionMeta}>显示偏好</span>
           </div>
         </div>
+        {readError ? (
+          <div className={styles.readError} role="alert">
+            <p>站点设置读取失败，暂时无法保存。</p>
+            <Button onClick={retryRead} disabled={retrying}>
+              {retrying ? "正在重试" : "重新读取"}
+            </Button>
+          </div>
+        ) : null}
         <label className={styles.preference}>
           <span className={styles.preferenceCopy}>
             <span className={styles.preferenceLabel}>百分比模式</span>
@@ -612,7 +682,7 @@ export function Settings() {
             <input
               type="checkbox"
               checked={scorePercentageMode}
-              disabled={displayLoading || displaySaving}
+              disabled={displayLoading || displaySaving || Boolean(readError)}
               onChange={(event) => void setScorePercentageMode(event.target.checked)}
             />
             {scorePercentageMode ? "开启" : "关闭"}
@@ -629,7 +699,7 @@ export function Settings() {
             <input
               type="checkbox"
               checked={scorePercentageMaxMode}
-              disabled={displayLoading || displaySaving || !scorePercentageMode}
+              disabled={displayLoading || displaySaving || Boolean(readError) || !scorePercentageMode}
               onChange={(event) => void setScorePercentageMaxMode(event.target.checked)}
             />
             {scorePercentageMaxMode ? "开启" : "关闭"}
@@ -644,7 +714,7 @@ export function Settings() {
             <input
               type="checkbox"
               checked={maintenanceMode}
-              disabled={displayLoading || displaySaving}
+              disabled={displayLoading || displaySaving || Boolean(readError)}
               onChange={(event) => void setMaintenanceMode(event.target.checked)}
             />
             {maintenanceMode ? "开启" : "关闭"}
@@ -670,6 +740,29 @@ export function Settings() {
             {dimensionScoreEmphasis ? "开启" : "关闭"}
           </span>
         </label>
+        <div className={styles.notesEditor}>
+          <TextAreaField
+            id="ranking-notes"
+            label="排行榜备注（Markdown）"
+            rows={8}
+            value={notesDraft}
+            error={notesError || undefined}
+            disabled={displayLoading || displaySaving || Boolean(readError)}
+            onChange={(event) => {
+              setNotesDraft(event.target.value);
+              if (notesError) setNotesError("");
+            }}
+          />
+          <div className={styles.notesActions}>
+            <Button
+              variant="primary"
+              onClick={() => void saveNotes()}
+              disabled={!notesDirty || displayLoading || displaySaving || Boolean(readError)}
+            >
+              {displaySaving ? "保存中…" : "保存"}
+            </Button>
+          </div>
+        </div>
       </section>
     );
   } else {
@@ -678,7 +771,7 @@ export function Settings() {
         <div className={styles.panelHead}>
           <div className={styles.panelIntro}>
             <p className={ui.sectionLabel}>数据</p>
-            <span className={ui.sectionMeta}>完整 JSON 导出 / 仅管理员</span>
+            <span className={ui.sectionMeta}>模型与评分 JSON 导出 / 仅管理员</span>
           </div>
         </div>
         <div className={styles.dataGrid}>
@@ -698,14 +791,14 @@ export function Settings() {
         <div className={styles.exportBox}>
           <div>
             <h2 className={styles.exportTitle}>导出 JSON</h2>
-            <p className={styles.exportText}>包含维度权重、归档项、模型评语、文字维度、私人备注与全部评分，可直接解析或备份。</p>
+            <p className={styles.exportText}>包含维度权重、归档项、模型评语、文字维度、私人备注与全部评分，可直接解析；完整备份以数据卷为准。</p>
           </div>
           <Button variant="primary" onClick={() => void exportJSON()} disabled={exporting}>
             <Icon name="download" size={14} />
             {exporting ? "导出中…" : "导出 JSON"}
           </Button>
         </div>
-        <p className={styles.backupNote}>数据库文件位于服务端 DB_PATH，备份以卷或本导出为准。</p>
+        <p className={styles.backupNote}>数据库文件位于服务端 DB_PATH，完整备份以数据卷为准。</p>
       </section>
     );
   }

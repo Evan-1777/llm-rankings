@@ -2,20 +2,26 @@ package api
 
 import (
 	"net/http"
+	"unicode/utf8"
 
 	"llmrank/internal/store"
 )
 
+// rankingNotesLimit bounds the public notes payload; it is measured in Unicode code points.
+const rankingNotesLimit = 20000
+
 type displaySettingsResponse struct {
-	ScorePercentageMode    bool `json:"scorePercentageMode"`
-	ScorePercentageMaxMode bool `json:"scorePercentageMaxMode"`
-	MaintenanceMode        bool `json:"maintenanceMode"`
+	ScorePercentageMode    bool   `json:"scorePercentageMode"`
+	ScorePercentageMaxMode bool   `json:"scorePercentageMaxMode"`
+	MaintenanceMode        bool   `json:"maintenanceMode"`
+	RankingNotes           string `json:"rankingNotes"`
 }
 
 type displaySettingsInput struct {
-	ScorePercentageMode    *bool `json:"scorePercentageMode"`
-	ScorePercentageMaxMode *bool `json:"scorePercentageMaxMode"`
-	MaintenanceMode        *bool `json:"maintenanceMode"`
+	ScorePercentageMode    *bool   `json:"scorePercentageMode"`
+	ScorePercentageMaxMode *bool   `json:"scorePercentageMaxMode"`
+	MaintenanceMode        *bool   `json:"maintenanceMode"`
+	RankingNotes           *string `json:"rankingNotes"`
 }
 
 func toDisplaySettingsResponse(settings store.DisplaySettings) displaySettingsResponse {
@@ -23,6 +29,7 @@ func toDisplaySettingsResponse(settings store.DisplaySettings) displaySettingsRe
 		ScorePercentageMode:    settings.ScorePercentageMode,
 		ScorePercentageMaxMode: settings.ScorePercentageMaxMode,
 		MaintenanceMode:        settings.MaintenanceMode,
+		RankingNotes:           settings.RankingNotes,
 	}
 }
 
@@ -50,6 +57,11 @@ func (s *Server) handlePutDisplaySettings(w http.ResponseWriter, r *http.Request
 	if input.MaintenanceMode == nil {
 		fields["maintenanceMode"] = "请提供维护模式设置"
 	}
+	if input.RankingNotes == nil {
+		fields["rankingNotes"] = "请提供排行榜备注"
+	} else if utf8.RuneCountInString(*input.RankingNotes) > rankingNotesLimit {
+		fields["rankingNotes"] = "排行榜备注不能超过 20000 个字符"
+	}
 	if len(fields) > 0 {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查显示设置", fields)
 		return
@@ -58,6 +70,7 @@ func (s *Server) handlePutDisplaySettings(w http.ResponseWriter, r *http.Request
 		ScorePercentageMode:    *input.ScorePercentageMode,
 		ScorePercentageMaxMode: *input.ScorePercentageMaxMode,
 		MaintenanceMode:        *input.MaintenanceMode,
+		RankingNotes:           *input.RankingNotes,
 	}
 	if err := s.store.UpdateDisplaySettings(r.Context(), settings); err != nil {
 		s.internalError(w, err)

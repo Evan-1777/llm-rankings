@@ -8,6 +8,7 @@ import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
 import { PageHeading } from "../components/PageHeading";
+import { RankingNotes } from "../components/RankingNotes";
 import { ScoreDialog } from "../components/ScoreDialog";
 import { SortButton } from "../components/SortButton";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
@@ -79,7 +80,7 @@ export function Rankings() {
   useDocumentTitle("综合排行");
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
   const session = useSession();
-  const { dimensionScoreEmphasis, scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
+  const { dimensionScoreEmphasis, scorePercentageMode, scorePercentageMaxMode, rankingNotes } = useDisplayPreferences();
   const displayMode = { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode };
   const toast = useToast();
   const navigate = useNavigate();
@@ -360,6 +361,8 @@ export function Rankings() {
       </div>
 
       {content}
+
+      {data && !error ? <RankingNotes content={rankingNotes} className={styles.notes} /> : null}
 
       {compareSlugs.length > 0 && data ? (
         <div className={styles.compareBar} role="region" aria-label="对比选择">

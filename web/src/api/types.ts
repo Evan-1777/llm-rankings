@@ -137,6 +137,8 @@ export interface DisplaySettings {
   scorePercentageMode: boolean;
   scorePercentageMaxMode: boolean;
   maintenanceMode: boolean;
+  /** Saved Markdown notes shown below the rankings; empty when unset. */
+  rankingNotes: string;
 }
 
 export interface ScoreResponse {
