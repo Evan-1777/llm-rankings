@@ -3,6 +3,8 @@ export interface Dimension {
   id: number;
   name: string;
   weight: number;
+  /** Fixed percentage baseline; null means the snapshot maximum. */
+  baselineMax?: number | null;
 }
 
 export interface RankRow {
@@ -51,7 +53,52 @@ export function formatDimension(value: number | null | undefined): string {
   return (Math.round(value * 10 + 1e-9) / 10).toFixed(1);
 }
 
-export function composite(dimensions: Dimension[], scores: Record<string, number>): Composite {
+/**
+ * Resolves the baseline of every dimension: the configured value wins,
+ * otherwise the highest valid score across the provided score sets is used.
+ * A fallback (the detail snapshot) only lifts an automatic baseline, which
+ * keeps the preview aligned when a hidden model holds the maximum.
+ */
+export function resolveBaselines(
+  dimensions: Dimension[],
+  scoreSets: Record<string, number>[],
+  fallback?: Record<number, number | null>,
+): Map<number, number> {
+  const baselines = new Map<number, number>();
+  for (const dimension of dimensions) {
+    if (dimension.baselineMax != null && Number.isFinite(dimension.baselineMax) && dimension.baselineMax > 0) {
+      baselines.set(dimension.id, dimension.baselineMax);
+      continue;
+    }
+    let max = 0;
+    let scored = false;
+    for (const scores of scoreSets) {
+      const value = scores[String(dimension.id)];
+      if (value == null || !Number.isFinite(value) || value < 0) continue;
+      if (!scored || value > max) max = value;
+      scored = true;
+    }
+    const floor = fallback?.[dimension.id];
+    if (floor != null && Number.isFinite(floor) && floor >= 0) {
+      max = scored ? Math.max(max, floor) : floor;
+      scored = true;
+    }
+    if (scored) baselines.set(dimension.id, max);
+  }
+  return baselines;
+}
+
+/** Converts a raw score to the percentage scale; a missing or zero baseline counts as 0. */
+export function convertScore(value: number, baseline: number | undefined): number {
+  if (baseline == null || !Number.isFinite(baseline) || baseline <= 0) return 0;
+  return (value / baseline) * 100;
+}
+
+export function composite(
+  dimensions: Dimension[],
+  scores: Record<string, number>,
+  baselines: Map<number, number>,
+): Composite {
   // Accumulate in stable id order so the display order never changes the
   // floating-point result.
   const ordered = [...dimensions].sort((a, b) => a.id - b.id);
@@ -71,7 +118,7 @@ export function composite(dimensions: Dimension[], scores: Record<string, number
     if (value == null || !Number.isFinite(value) || value < 0) continue;
     scoredWeight += dimension.weight;
     scoredCount += 1;
-    weighted += (dimension.weight / totalWeight) * value;
+    weighted += (dimension.weight / totalWeight) * convertScore(value, baselines.get(dimension.id));
   }
   if (scoredWeight === 0) {
     return { score: null, coverage: 0, provisional: false, scoredCount: 0 };
@@ -182,6 +229,7 @@ export function previewRanking(
   dimensions: Dimension[],
   slug: string,
   values: Record<number, number | null>,
+  fallback?: Record<number, number | null>,
 ): Preview {
   const drafts = new Map<string, Record<string, number>>();
   for (const row of rows) {
@@ -196,9 +244,12 @@ export function previewRanking(
     drafts.set(row.slug, scores);
   }
 
+  // Resolve baselines after merging the draft so raising the top score lifts
+  // the automatic baseline exactly like the saved snapshot will.
+  const baselines = resolveBaselines(dimensions, [...drafts.values()], fallback);
   const computed = rows.map((row) => ({
     row,
-    result: composite(dimensions, drafts.get(row.slug) ?? {}),
+    result: composite(dimensions, drafts.get(row.slug) ?? {}, baselines),
   }));
   computed.sort((a, b) => {
     if (Boolean(a.row.hidden) !== Boolean(b.row.hidden)) return a.row.hidden ? 1 : -1;

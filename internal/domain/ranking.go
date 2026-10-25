@@ -12,6 +12,9 @@ type Dimension struct {
 	ID     int64
 	Name   string
 	Weight int
+	// BaselineMax converts scores into percentages. Nil derives the baseline
+	// from the highest valid score inside the ranking snapshot.
+	BaselineMax *float64
 }
 
 // Model is the minimal model identity needed for ranking.
@@ -51,6 +54,10 @@ type Row struct {
 type Result struct {
 	Rows        []Row
 	TotalWeight int
+	// EffectiveBaselines maps every dimension with a usable baseline to the
+	// value used for conversion. Dimensions without a fixed baseline and
+	// without any valid score are absent.
+	EffectiveBaselines map[int64]float64
 }
 
 // ProvisionalThreshold is the coverage below which a ranking is provisional.
@@ -72,9 +79,11 @@ func Compute(in Input) Result {
 		}
 	}
 
+	baselines := EffectiveBaselines(in.Dimensions, in.Models, in.Scores)
+
 	scoresByModel := make(map[int64]map[int64]float64, len(in.Models))
 	for _, sc := range in.Scores {
-		if !known[sc.DimensionID] || math.IsNaN(sc.Value) || math.IsInf(sc.Value, 0) || sc.Value < 0 {
+		if !known[sc.DimensionID] || !validScore(sc.Value) {
 			continue
 		}
 		if scoresByModel[sc.ModelID] == nil {
@@ -106,8 +115,14 @@ func Compute(in Input) Result {
 				continue
 			}
 			scoredWeight += weight
+			// Convert to the percentage scale first; a missing or zero baseline
+			// contributes 0, mirroring the frontend formula.
+			converted := 0.0
+			if baseline := baselines[dimension.ID]; baseline > 0 {
+				converted = value / baseline * 100
+			}
 			// Normalize before multiplying so finite extreme values cannot overflow.
-			weightedSum += (float64(weight) / float64(totalWeight)) * value
+			weightedSum += (float64(weight) / float64(totalWeight)) * converted
 		}
 		if totalWeight > 0 && scoredWeight > 0 {
 			score := weightedSum / (float64(scoredWeight) / float64(totalWeight))
@@ -135,7 +150,54 @@ func Compute(in Input) Result {
 		rows[i].Rank = rank
 	}
 
-	return Result{Rows: rows, TotalWeight: totalWeight}
+	return Result{Rows: rows, TotalWeight: totalWeight, EffectiveBaselines: baselines}
+}
+
+// EffectiveBaselines resolves the baseline of every dimension: the configured
+// value wins; otherwise the highest valid score inside the snapshot is used.
+// Hidden models participate, scores from models outside the snapshot (archived
+// ones in practice) are ignored, and the result never contains a dimension
+// without a usable baseline.
+func EffectiveBaselines(dimensions []Dimension, models []Model, scores []Score) map[int64]float64 {
+	known := make(map[int64]bool, len(dimensions))
+	for _, d := range dimensions {
+		known[d.ID] = true
+	}
+	inSnapshot := make(map[int64]bool, len(models))
+	for _, m := range models {
+		inSnapshot[m.ID] = true
+	}
+	highest := make(map[int64]float64, len(dimensions))
+	scored := make(map[int64]bool, len(dimensions))
+	for _, sc := range scores {
+		if !known[sc.DimensionID] || !inSnapshot[sc.ModelID] || !validScore(sc.Value) {
+			continue
+		}
+		if !scored[sc.DimensionID] || sc.Value > highest[sc.DimensionID] {
+			highest[sc.DimensionID] = sc.Value
+		}
+		scored[sc.DimensionID] = true
+	}
+
+	out := make(map[int64]float64, len(dimensions))
+	for _, d := range dimensions {
+		if d.BaselineMax != nil && validBaseline(*d.BaselineMax) {
+			out[d.ID] = *d.BaselineMax
+			continue
+		}
+		if scored[d.ID] {
+			out[d.ID] = highest[d.ID]
+		}
+	}
+	return out
+}
+
+func validScore(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+func validBaseline(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value > 0
 }
 
 func sortRows(rows []Row) {

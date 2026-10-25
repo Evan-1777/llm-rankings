@@ -149,9 +149,11 @@ type rankingOutput struct {
 	TotalWeight int     `json:"totalWeight"`
 	UpdatedAt   *string `json:"updatedAt"`
 	Dimensions  []struct {
-		ID     int64  `json:"id"`
-		Weight int    `json:"weight"`
-		Name   string `json:"name"`
+		ID                   int64    `json:"id"`
+		Weight               int      `json:"weight"`
+		Name                 string   `json:"name"`
+		BaselineMax          *float64 `json:"baselineMax"`
+		EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
 	} `json:"dimensions"`
 	Models []struct {
 		Slug        string             `json:"slug"`
@@ -218,7 +220,9 @@ func TestRankingFlowAndPrivacy(t *testing.T) {
 		t.Fatalf("ranking summary = %+v", anonRanking)
 	}
 	first := anonRanking.Models[0]
-	if first.Slug != "gpt-5" || first.Score == nil || math.Abs(*first.Score-8.65) > 1e-9 {
+	// Baselines are the snapshot maximums (12.5, 8, 0), so every dimension
+	// converts to 100, 100 and 0 before weighting: 0.5*100 + 0.3*100.
+	if first.Slug != "gpt-5" || first.Score == nil || math.Abs(*first.Score-80) > 1e-9 {
 		t.Fatalf("weighted score = %+v", first)
 	}
 	if first.Coverage != 1 || first.Provisional || first.Rank == nil || *first.Rank != 1 {
@@ -230,6 +234,21 @@ func TestRankingFlowAndPrivacy(t *testing.T) {
 	last := anonRanking.Models[1]
 	if last.Slug != "unscored" || last.Score != nil || last.Rank != nil {
 		t.Fatalf("unscored row = %+v", last)
+	}
+	for _, dimension := range anonRanking.Dimensions {
+		if dimension.BaselineMax != nil {
+			t.Fatalf("unconfigured baseline must be null: %+v", dimension)
+		}
+		switch dimension.Name {
+		case "Reasoning", "Coding", "Writing":
+			if dimension.EffectiveBaselineMax == nil {
+				t.Fatalf("%s must expose its automatic baseline: %+v", dimension.Name, dimension)
+			}
+		case "Unused":
+			if dimension.EffectiveBaselineMax != nil {
+				t.Fatalf("unscored dimension must have no effective baseline: %+v", dimension)
+			}
+		}
 	}
 
 	code, publicDetail, _ := e.do(t, e.anon, http.MethodGet, "/api/models/gpt-5", nil, nil)
@@ -1002,5 +1021,203 @@ func TestModelVisibilityArchiveAndText(t *testing.T) {
 	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/export", nil, nil)
 	if code != http.StatusOK || !strings.Contains(string(body), `"hidden": true`) || !strings.Contains(string(body), `"texts": [`) {
 		t.Fatalf("export missing new fields: %d", code)
+	}
+}
+
+type baselineDimension struct {
+	ID                   int64    `json:"id"`
+	Name                 string   `json:"name"`
+	Weight               int      `json:"weight"`
+	BaselineMax          *float64 `json:"baselineMax"`
+	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
+}
+
+func (e *env) dimensionBaselines(t *testing.T, client *http.Client, path string) []baselineDimension {
+	t.Helper()
+	code, body, _ := e.do(t, client, http.MethodGet, path, nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("GET %s = %d %s", path, code, body)
+	}
+	var out struct {
+		Dimensions []baselineDimension `json:"dimensions"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return out.Dimensions
+}
+
+func scoreOfSlug(ranking rankingOutput, slug string) *float64 {
+	for _, model := range ranking.Models {
+		if model.Slug == slug {
+			return model.Score
+		}
+	}
+	return nil
+}
+
+func TestDimensionBaselineFlow(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	code, body, _ := e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": "Quality", "description": "", "weight": 100, "baselineMax": 10,
+	}, nil)
+	if code != http.StatusCreated {
+		t.Fatalf("create with baseline = %d %s", code, body)
+	}
+	if strings.Contains(string(body), "effectiveBaselineMax") {
+		t.Fatalf("write response must not invent an effective baseline: %s", body)
+	}
+	var created baselineDimension
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.BaselineMax == nil || *created.BaselineMax != 10 {
+		t.Fatalf("created baseline = %+v", created.BaselineMax)
+	}
+	createModel(t, e, "low", "Low")
+	createModel(t, e, "high", "High")
+	for slug, value := range map[string]float64{"low": 8, "high": 12} {
+		code, body, _ := e.do(t, e.admin, http.MethodPut, "/api/models/"+slug+"/scores/"+itoa(created.ID), map[string]any{"value": value}, nil)
+		if code != http.StatusOK {
+			t.Fatalf("score %s = %d %s", slug, code, body)
+		}
+	}
+
+	ranking := e.rankings(t, e.anon)
+	if got := scoreOfSlug(ranking, "low"); got == nil || math.Abs(*got-80) > 1e-9 {
+		t.Fatalf("fixed baseline score = %v, want 80", got)
+	}
+	if got := scoreOfSlug(ranking, "high"); got == nil || math.Abs(*got-120) > 1e-9 {
+		t.Fatalf("above-baseline score = %v, want 120", got)
+	}
+	dimension := ranking.Dimensions[0]
+	if dimension.BaselineMax == nil || *dimension.BaselineMax != 10 ||
+		dimension.EffectiveBaselineMax == nil || *dimension.EffectiveBaselineMax != 10 {
+		t.Fatalf("ranking baseline fields = %+v", dimension)
+	}
+
+	path := "/api/dimensions/" + itoa(created.ID)
+	// Omitting the field keeps the stored baseline.
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"weight": 100}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"baselineMax":10`) {
+		t.Fatalf("omitted baseline = %d %s", code, body)
+	}
+	// Explicit null restores the automatic baseline.
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"baselineMax": nil}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"baselineMax":null`) {
+		t.Fatalf("clear baseline = %d %s", code, body)
+	}
+	ranking = e.rankings(t, e.anon)
+	if got := scoreOfSlug(ranking, "low"); got == nil || math.Abs(*got-100*8.0/12.0) > 1e-9 {
+		t.Fatalf("automatic baseline score = %v, want 66.67", got)
+	}
+	if dimension := ranking.Dimensions[0]; dimension.EffectiveBaselineMax == nil || *dimension.EffectiveBaselineMax != 12 {
+		t.Fatalf("automatic baseline = %+v", dimension.EffectiveBaselineMax)
+	}
+	if list := e.dimensionBaselines(t, e.admin, "/api/dimensions"); list[0].EffectiveBaselineMax == nil || *list[0].EffectiveBaselineMax != 12 {
+		t.Fatalf("dimension list baseline = %+v", list[0])
+	}
+	if exported := e.dimensionBaselines(t, e.admin, "/api/export"); exported[0].EffectiveBaselineMax == nil || *exported[0].EffectiveBaselineMax != 12 {
+		t.Fatalf("export baseline = %+v", exported[0])
+	}
+	code, detail, _ := e.do(t, e.admin, http.MethodGet, "/api/models/low", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("detail = %d", code)
+	}
+	var detailOut struct {
+		Score      *float64            `json:"score"`
+		Dimensions []baselineDimension `json:"dimensions"`
+	}
+	if err := json.Unmarshal(detail, &detailOut); err != nil {
+		t.Fatal(err)
+	}
+	if detailOut.Score == nil || math.Abs(*detailOut.Score-100*8.0/12.0) > 1e-9 {
+		t.Fatalf("detail score = %v", detailOut.Score)
+	}
+	if detailOut.Dimensions[0].EffectiveBaselineMax == nil || *detailOut.Dimensions[0].EffectiveBaselineMax != 12 {
+		t.Fatalf("detail baseline = %+v", detailOut.Dimensions[0])
+	}
+
+	for _, value := range []float64{0, -1} {
+		code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"baselineMax": value}, nil)
+		if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), `"baselineMax"`) {
+			t.Fatalf("baseline %v = %d %s, want 422", value, code, body)
+		}
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": "Bad", "description": "", "weight": 10, "baselineMax": 0,
+	}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "baselineMax") {
+		t.Fatalf("create baseline 0 = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": "BadType", "description": "", "weight": 10, "baselineMax": "ten",
+	}, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("create baseline type error = %d %s, want 400", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"baselineMax": "ten"}, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("baseline type error = %d %s, want 400", code, body)
+	}
+}
+
+func TestHiddenModelDrivesPublicBaseline(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	dimID := createDimension(t, e, "Reasoning", 100)
+	createModel(t, e, "visible", "Visible")
+	createModel(t, e, "secret", "Secret")
+	for slug, value := range map[string]float64{"visible": 8, "secret": 10} {
+		code, body, _ := e.do(t, e.admin, http.MethodPut, "/api/models/"+slug+"/scores/"+itoa(dimID), map[string]any{"value": value}, nil)
+		if code != http.StatusOK {
+			t.Fatalf("score %s = %d %s", slug, code, body)
+		}
+	}
+	code, body, _ := e.do(t, e.admin, http.MethodPatch, "/api/models/secret", map[string]any{"hidden": true}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("hide = %d %s", code, body)
+	}
+
+	public := e.rankings(t, e.anon)
+	if len(public.Models) != 1 || public.Models[0].Slug != "visible" {
+		t.Fatalf("hidden model leaked into the public ranking: %+v", public.Models)
+	}
+	if got := scoreOfSlug(public, "visible"); got == nil || math.Abs(*got-80) > 1e-9 {
+		t.Fatalf("public score = %v, want 80", got)
+	}
+	if dimension := public.Dimensions[0]; dimension.EffectiveBaselineMax == nil || *dimension.EffectiveBaselineMax != 10 {
+		t.Fatalf("public baseline must include hidden models: %+v", dimension)
+	}
+	if list := e.dimensionBaselines(t, e.admin, "/api/dimensions"); list[0].EffectiveBaselineMax == nil || *list[0].EffectiveBaselineMax != 10 {
+		t.Fatalf("dimension list baseline = %+v", list[0])
+	}
+	if exported := e.dimensionBaselines(t, e.admin, "/api/export"); exported[0].EffectiveBaselineMax == nil || *exported[0].EffectiveBaselineMax != 10 {
+		t.Fatalf("export baseline = %+v", exported[0])
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/rankings?includeHidden=1", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"slug":"secret"`) {
+		t.Fatalf("admin hidden ranking = %d %s", code, body)
+	}
+	var withHidden rankingOutput
+	if err := json.Unmarshal(body, &withHidden); err != nil {
+		t.Fatal(err)
+	}
+	if got := scoreOfSlug(withHidden, "secret"); got == nil || math.Abs(*got-100) > 1e-9 {
+		t.Fatalf("hidden score = %v, want 100", got)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/models/secret/archive", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("archive hidden model = %d %s", code, body)
+	}
+	public = e.rankings(t, e.anon)
+	if got := scoreOfSlug(public, "visible"); got == nil || math.Abs(*got-100) > 1e-9 {
+		t.Fatalf("archived model must leave the baseline: score = %v, want 100", got)
+	}
+	if dimension := public.Dimensions[0]; dimension.EffectiveBaselineMax == nil || *dimension.EffectiveBaselineMax != 8 {
+		t.Fatalf("archived model raised the baseline: %+v", dimension)
 	}
 }

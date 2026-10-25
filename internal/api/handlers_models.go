@@ -65,8 +65,12 @@ type modelDimension struct {
 	Weight   int      `json:"weight"`
 	TextMode bool     `json:"textMode"`
 	Value    *float64 `json:"value"`
-	Text     *string  `json:"text,omitempty"`
-	Note     *string  `json:"note,omitempty"`
+	// BaselineMax is the configured fixed baseline; null means automatic.
+	BaselineMax *float64 `json:"baselineMax"`
+	// EffectiveBaselineMax is the baseline behind this model's composite score.
+	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
+	Text                 *string  `json:"text,omitempty"`
+	Note                 *string  `json:"note,omitempty"`
 }
 
 func stampString(t *time.Time) *string {
@@ -362,7 +366,11 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	scoredCount := 0
 	dimensionCount := 0
 	for _, d := range snapshot.dimensions {
-		item := modelDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, TextMode: d.TextMode}
+		item := modelDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, TextMode: d.TextMode, BaselineMax: d.BaselineMax}
+		if baseline, ok := snapshot.result.EffectiveBaselines[d.ID]; ok {
+			value := baseline
+			item.EffectiveBaselineMax = &value
+		}
 		if d.TextMode {
 			text := texts[d.ID]
 			item.Text = &text

@@ -68,10 +68,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slugByID := make(map[int64]string, len(models))
-	dimensions := make([]dimensionResponse, 0, len(dims))
-	for _, d := range dims {
-		dimensions = append(dimensions, toDimensionResponse(d))
-	}
+	dimensions := toDimensionResponses(dims, effectiveBaselinesFor(dims, models, scores))
 	exportModels := make([]exportModel, 0, len(models))
 	for _, m := range models {
 		slugByID[m.ID] = m.Slug

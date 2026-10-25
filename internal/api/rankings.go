@@ -32,19 +32,11 @@ func (s *Server) loadRanking(ctx context.Context) (rankingSnapshot, error) {
 	if err != nil {
 		return rankingSnapshot{}, err
 	}
-	domainDims := make([]domain.Dimension, 0, len(dims))
-	for _, d := range dims {
-		domainDims = append(domainDims, domain.Dimension{ID: d.ID, Name: d.Name, Weight: d.Weight})
-	}
-	domainModels := make([]domain.Model, 0, len(models))
-	for _, m := range models {
-		domainModels = append(domainModels, domain.Model{ID: m.ID, Slug: m.Slug, Name: m.Name, Vendor: m.Vendor, Hidden: m.Hidden})
-	}
-	domainScores := make([]domain.Score, 0, len(scores))
-	for _, sc := range scores {
-		domainScores = append(domainScores, domain.Score{ModelID: sc.ModelID, DimensionID: sc.DimensionID, Value: sc.Value})
-	}
-	result := domain.Compute(domain.Input{Dimensions: domainDims, Models: domainModels, Scores: domainScores})
+	result := domain.Compute(domain.Input{
+		Dimensions: toDomainDimensions(dims),
+		Models:     toDomainModels(models),
+		Scores:     toDomainScores(scores),
+	})
 	updatedAt, err := s.store.MaxUpdatedAt(ctx)
 	if err != nil {
 		return rankingSnapshot{}, err
@@ -63,6 +55,10 @@ type rankingDimension struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Weight int    `json:"weight"`
+	// BaselineMax is the configured fixed baseline; null means automatic.
+	BaselineMax *float64 `json:"baselineMax"`
+	// EffectiveBaselineMax is the baseline used for this snapshot.
+	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
 }
 
 type rankingModel struct {
@@ -93,9 +89,15 @@ func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
 	// Text dimensions never hold numeric scores, so they stay out of this table.
 	dimensions := make([]rankingDimension, 0, len(snapshot.dimensions))
 	for _, d := range snapshot.dimensions {
-		if !d.TextMode {
-			dimensions = append(dimensions, rankingDimension{ID: d.ID, Name: d.Name, Weight: d.Weight})
+		if d.TextMode {
+			continue
 		}
+		item := rankingDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, BaselineMax: d.BaselineMax}
+		if baseline, ok := snapshot.result.EffectiveBaselines[d.ID]; ok {
+			value := baseline
+			item.EffectiveBaselineMax = &value
+		}
+		dimensions = append(dimensions, item)
 	}
 
 	models := make([]rankingModel, 0, len(snapshot.result.Rows))
@@ -137,4 +139,41 @@ func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
 		Dimensions:  dimensions,
 		Models:      models,
 	})
+}
+
+func toDomainDimensions(dims []store.Dimension) []domain.Dimension {
+	out := make([]domain.Dimension, 0, len(dims))
+	for _, d := range dims {
+		out = append(out, domain.Dimension{ID: d.ID, Name: d.Name, Weight: d.Weight, BaselineMax: d.BaselineMax})
+	}
+	return out
+}
+
+func toDomainModels(models []store.ModelSummary) []domain.Model {
+	out := make([]domain.Model, 0, len(models))
+	for _, m := range models {
+		out = append(out, domain.Model{ID: m.ID, Slug: m.Slug, Name: m.Name, Vendor: m.Vendor, Hidden: m.Hidden})
+	}
+	return out
+}
+
+func toDomainScores(scores []store.Score) []domain.Score {
+	out := make([]domain.Score, 0, len(scores))
+	for _, sc := range scores {
+		out = append(out, domain.Score{ModelID: sc.ModelID, DimensionID: sc.DimensionID, Value: sc.Value})
+	}
+	return out
+}
+
+// effectiveBaselinesFor resolves the baselines exposed by the dimension list
+// and the export. Archived models are not part of the ranking snapshot, so
+// their scores never raise an automatic baseline.
+func effectiveBaselinesFor(dims []store.Dimension, models []store.ModelSummary, scores []store.Score) map[int64]float64 {
+	active := make([]store.ModelSummary, 0, len(models))
+	for _, m := range models {
+		if m.ArchivedAt == nil {
+			active = append(active, m)
+		}
+	}
+	return domain.EffectiveBaselines(toDomainDimensions(dims), toDomainModels(active), toDomainScores(scores))
 }

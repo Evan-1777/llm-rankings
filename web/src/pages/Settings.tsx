@@ -31,6 +31,20 @@ const tabLabels: Record<Tab, string> = {
 
 const tabOrder: Tab[] = ["dimensions", "models", "data", "display"];
 
+function formatBaseline(value: number): string {
+  return Number.isFinite(value) ? String(value) : "—";
+}
+
+/** Fixed baselines show the configured value; automatic ones show the snapshot value. */
+function baselineMeta(dimension: Dimension): string {
+  if (dimension.textMode) return "基准不适用";
+  const configured = dimension.baselineMax != null ? `基准 ${formatBaseline(dimension.baselineMax)}（固定）` : "";
+  if (dimension.archivedAt) return configured || "自动";
+  if (configured) return configured;
+  const effective = dimension.effectiveBaselineMax;
+  return effective == null ? "自动 · —" : `自动 · ${formatBaseline(effective)}`;
+}
+
 function resolveTab(raw: string | null): Tab {
   return raw === "models" || raw === "data" || raw === "display" ? raw : "dimensions";
 }
@@ -522,6 +536,7 @@ export function Settings() {
                 <div className={styles.nameBlock}>
                   <span className={styles.itemName}>{dimension.name}</span>
                   {dimension.description ? <span className={styles.itemMeta}>{dimension.description}</span> : null}
+                  <span className={styles.itemMeta}>{baselineMeta(dimension)}</span>
                 </div>
                 <span className={styles.weight}>{dimension.weight}</span>
                 <span className={styles.status}>

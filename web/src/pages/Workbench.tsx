@@ -420,7 +420,14 @@ export function Workbench() {
       {content}
 
       {scoreTarget && data && !editing ? (
-        <ScoreDialog open model={scoreTarget} rankings={data} onClose={() => setScoreTarget(null)} onSaved={refreshAll} />
+        <ScoreDialog
+          open
+          model={scoreTarget}
+          rankings={data}
+          rankingsComplete
+          onClose={() => setScoreTarget(null)}
+          onSaved={refreshAll}
+        />
       ) : null}
       {modelOpen && !editing ? <ModelDialog open models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} /> : null}
       </div>

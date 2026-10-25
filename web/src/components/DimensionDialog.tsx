@@ -19,6 +19,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [weight, setWeight] = useState("0");
+  const [baseline, setBaseline] = useState("");
   const [excluded, setExcluded] = useState(false);
   const [textMode, setTextMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -31,6 +32,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     setName(dimension?.name ?? "");
     setDescription(dimension?.description ?? "");
     setWeight(dimension ? String(dimension.weight) : "50");
+    setBaseline(dimension?.baselineMax == null ? "" : String(dimension.baselineMax));
     setExcluded(dimension ? dimension.weight === 0 : false);
     setTextMode(dimension?.textMode ?? false);
     setErrors({});
@@ -45,6 +47,10 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
       const numeric = Number(weight);
       if (!Number.isInteger(numeric) || numeric < 1 || numeric > 100) next.weight = "参与评分时权重需为 1–100 的整数";
     }
+    if (!textMode && baseline.trim() !== "") {
+      const numeric = Number(baseline);
+      if (!Number.isFinite(numeric) || numeric <= 0) next.baselineMax = "基准最大值需为大于 0 的数";
+    }
     return next;
   };
 
@@ -55,7 +61,13 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     if (Object.keys(nextErrors).length > 0) return;
     setSaving(true);
     setSaveError("");
-    const input = { name: name.trim(), description, weight: excluded ? 0 : Number(weight), textMode: excluded && textMode };
+    const input = {
+      name: name.trim(),
+      description,
+      weight: excluded ? 0 : Number(weight),
+      textMode: excluded && textMode,
+      baselineMax: textMode || baseline.trim() === "" ? null : Number(baseline),
+    };
     try {
       if (dimension) {
         await api.updateDimension(dimension.id, input);
@@ -135,6 +147,23 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
               error={errors.weight}
               hint={excluded ? "不纳入评分的维度权重固定为 0。" : "1–100 的整数。"}
               onChange={(event) => setWeight(event.target.value)}
+            />
+            <TextField
+              id="dimension-baseline"
+              label="基准最大值"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              value={baseline}
+              disabled={textMode}
+              error={errors.baselineMax}
+              hint={
+                textMode
+                  ? "文字维度不参与换算，无需设置基准。"
+                  : "留空按当前最高分自动换算，填写后固定；满分换算为 100。"
+              }
+              onChange={(event) => setBaseline(event.target.value)}
             />
             <label className={ui.checkboxRow}>
               <input type="checkbox" checked={textMode} disabled={!excluded} onChange={(event) => setTextMode(event.target.checked)} />

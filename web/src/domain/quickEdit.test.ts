@@ -4,9 +4,9 @@ import { collectQuickEdit, commitQuickEdit, createQuickEdit } from "./quickEdit.
 import type { RankingDimension, RankingModel } from "../api/types.ts";
 
 const dimensions: RankingDimension[] = [
-  { id: 2, name: "Coding", weight: 30 },
-  { id: 1, name: "Reasoning", weight: 50 },
-  { id: 3, name: "Writing", weight: 20 },
+  { id: 2, name: "Coding", weight: 30, baselineMax: null, effectiveBaselineMax: null },
+  { id: 1, name: "Reasoning", weight: 50, baselineMax: null, effectiveBaselineMax: null },
+  { id: 3, name: "Writing", weight: 20, baselineMax: null, effectiveBaselineMax: null },
 ];
 
 function model(slug: string, scores: Record<string, number>): RankingModel {

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,14 +14,19 @@ import (
 )
 
 type dimensionResponse struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Weight      int     `json:"weight"`
-	TextMode    bool    `json:"textMode"`
-	ArchivedAt  *string `json:"archivedAt"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Weight      int    `json:"weight"`
+	TextMode    bool   `json:"textMode"`
+	// BaselineMax is the configured fixed baseline; null means automatic.
+	BaselineMax *float64 `json:"baselineMax"`
+	// EffectiveBaselineMax is only filled where the current snapshot matters:
+	// the dimension list and the export.
+	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax,omitempty"`
+	ArchivedAt           *string  `json:"archivedAt"`
+	CreatedAt            string   `json:"createdAt"`
+	UpdatedAt            string   `json:"updatedAt"`
 }
 
 type bootstrapResponse struct {
@@ -48,10 +55,24 @@ func toDimensionResponse(d store.Dimension) dimensionResponse {
 		Description: d.Description,
 		Weight:      d.Weight,
 		TextMode:    d.TextMode,
+		BaselineMax: d.BaselineMax,
 		ArchivedAt:  archived,
 		CreatedAt:   d.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   d.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func toDimensionResponses(dims []store.Dimension, effective map[int64]float64) []dimensionResponse {
+	out := make([]dimensionResponse, 0, len(dims))
+	for _, d := range dims {
+		item := toDimensionResponse(d)
+		if baseline, ok := effective[d.ID]; ok {
+			value := baseline
+			item.EffectiveBaselineMax = &value
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func (s *Server) handleListDimensions(w http.ResponseWriter, r *http.Request) {
@@ -65,28 +86,58 @@ func (s *Server) handleListDimensions(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
-	out := make([]dimensionResponse, 0, len(dims))
-	for _, d := range dims {
-		out = append(out, toDimensionResponse(d))
+	models, err := s.store.ListModels(r.Context(), false)
+	if err != nil {
+		s.internalError(w, err)
+		return
 	}
+	scores, err := s.store.AllScores(r.Context())
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	out := toDimensionResponses(dims, effectiveBaselinesFor(dims, models, scores))
 	writeJSON(w, http.StatusOK, map[string]any{"dimensions": out})
 }
 
 type dimensionInput struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Weight      int    `json:"weight"`
-	TextMode    bool   `json:"textMode"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Weight      int      `json:"weight"`
+	TextMode    bool     `json:"textMode"`
+	BaselineMax *float64 `json:"baselineMax"`
+}
+
+// optionalFloat distinguishes an absent field from an explicit null, so a
+// partial update can keep the stored baseline untouched or clear it.
+type optionalFloat struct {
+	Set   bool
+	Value *float64
+}
+
+func (o *optionalFloat) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var value float64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	o.Value = &value
+	return nil
 }
 
 type dimensionPatch struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Weight      *int    `json:"weight"`
-	TextMode    *bool   `json:"textMode"`
+	Name        *string       `json:"name"`
+	Description *string       `json:"description"`
+	Weight      *int          `json:"weight"`
+	TextMode    *bool         `json:"textMode"`
+	BaselineMax optionalFloat `json:"baselineMax"`
 }
 
-func validateDimension(name, description string, weight int, textMode bool) map[string]string {
+func validateDimension(name, description string, weight int, textMode bool, baselineMax *float64) map[string]string {
 	fields := map[string]string{}
 	if length := utf8.RuneCountInString(name); length < 1 || length > 40 {
 		fields["name"] = "名称需为 1–40 个字符"
@@ -98,6 +149,9 @@ func validateDimension(name, description string, weight int, textMode bool) map[
 		fields["weight"] = "权重需为 0–100 的整数"
 	} else if textMode && weight != 0 {
 		fields["weight"] = "文字维度的权重固定为 0"
+	}
+	if baselineMax != nil && (math.IsNaN(*baselineMax) || math.IsInf(*baselineMax, 0) || *baselineMax <= 0) {
+		fields["baselineMax"] = "基准最大值需为大于 0 的数"
 	}
 	if len(fields) == 0 {
 		return nil
@@ -148,11 +202,11 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if fields := validateDimension(input.Name, input.Description, input.Weight, input.TextMode); fields != nil {
+	if fields := validateDimension(input.Name, input.Description, input.Weight, input.TextMode, input.BaselineMax); fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度信息", fields)
 		return
 	}
-	d, err := s.store.CreateDimension(r.Context(), input.Name, input.Description, input.Weight, input.TextMode)
+	d, err := s.store.CreateDimension(r.Context(), input.Name, input.Description, input.Weight, input.TextMode, input.BaselineMax)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeFields(w, http.StatusConflict, "conflict", "维度名称已存在", map[string]string{"name": "维度名称已存在"})
@@ -173,7 +227,7 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSON(w, r, &patch) {
 		return
 	}
-	if patch.Name == nil && patch.Description == nil && patch.Weight == nil && patch.TextMode == nil {
+	if patch.Name == nil && patch.Description == nil && patch.Weight == nil && patch.TextMode == nil && !patch.BaselineMax.Set {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "没有需要更新的字段", map[string]string{"_": "没有需要更新的字段"})
 		return
 	}
@@ -183,6 +237,10 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, description, weight, textMode := current.Name, current.Description, current.Weight, current.TextMode
+	baselineMax := current.BaselineMax
+	if patch.BaselineMax.Set {
+		baselineMax = patch.BaselineMax.Value
+	}
 	if patch.Name != nil {
 		name = strings.TrimSpace(*patch.Name)
 	}
@@ -195,11 +253,11 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	if patch.TextMode != nil {
 		textMode = *patch.TextMode
 	}
-	if fields := validateDimension(name, description, weight, textMode); fields != nil {
+	if fields := validateDimension(name, description, weight, textMode, baselineMax); fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度信息", fields)
 		return
 	}
-	updated, err := s.store.UpdateDimension(r.Context(), id, name, description, weight, textMode)
+	updated, err := s.store.UpdateDimension(r.Context(), id, name, description, weight, textMode, baselineMax)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeFields(w, http.StatusConflict, "conflict", "维度名称已存在", map[string]string{"name": "维度名称已存在"})

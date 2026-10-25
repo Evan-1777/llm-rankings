@@ -10,6 +10,10 @@ export interface Dimension {
   description: string;
   weight: number;
   textMode: boolean;
+  /** Fixed percentage baseline; null means the current highest score is used. */
+  baselineMax: number | null;
+  /** Baseline used by the current snapshot; only the list and export fill it. */
+  effectiveBaselineMax?: number | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -27,6 +31,8 @@ export interface RankingDimension {
   id: number;
   name: string;
   weight: number;
+  baselineMax: number | null;
+  effectiveBaselineMax: number | null;
 }
 
 export interface RankingModel {
@@ -86,6 +92,8 @@ export interface ModelDimension {
   weight: number;
   textMode: boolean;
   value: number | null;
+  baselineMax: number | null;
+  effectiveBaselineMax: number | null;
   text?: string;
   note?: string;
 }
@@ -114,6 +122,7 @@ export interface DimensionInput {
   description: string;
   weight: number;
   textMode: boolean;
+  baselineMax: number | null;
 }
 
 export interface ModelInput {
