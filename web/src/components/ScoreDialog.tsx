@@ -33,15 +33,12 @@ interface ScoreDialogProps {
   open: boolean;
   model: RankingModel | null;
   rankings: Rankings;
-  /** True when rankings already contains hidden models (the workbench does). */
-  rankingsComplete?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function ScoreDialog({ open, model, rankings, rankingsComplete = false, onClose, onSaved }: ScoreDialogProps) {
+export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDialogProps) {
   const [detail, setDetail] = useState<ModelDetail | null>(null);
-  const [fullRankings, setFullRankings] = useState<Rankings | null>(null);
   const [draft, setDraft] = useState<Record<number, DraftRow>>({});
   const [original, setOriginal] = useState<Record<number, OriginalRow>>({});
   const [loading, setLoading] = useState(false);
@@ -62,19 +59,14 @@ export function ScoreDialog({ open, model, rankings, rankingsComplete = false, o
     setLoading(true);
     setLoadError("");
     setDetail(null);
-    setFullRankings(null);
     setDraft({});
     setOriginal({});
     setSaveError("");
-    // Automatic baselines include hidden models, so an incomplete public board
-    // would preview a lower score than the server stores. Fetch the complete
-    // board unless the parent already has it; a failed request falls back to
-    // the detail's effective baselines.
-    const completeRankings = rankingsComplete
-      ? Promise.resolve<Rankings | null>(null)
-      : api.rankings(true, controller.signal).catch(() => null);
-    Promise.all([api.model(slug, controller.signal), completeRankings])
-      .then(([data, complete]) => {
+    // The detail snapshot already contains hidden models, so its effective
+    // baselines are the server truth for the preview; no second board request.
+    api
+      .model(slug, controller.signal)
+      .then((data) => {
         const nextDraft: Record<number, DraftRow> = {};
         const nextOriginal: Record<number, OriginalRow> = {};
         for (const dimension of data.dimensions) {
@@ -88,7 +80,6 @@ export function ScoreDialog({ open, model, rankings, rankingsComplete = false, o
           nextOriginal[dimension.id] = { value: dimension.value, note: dimension.note ?? "", text };
         }
         setDetail(data);
-        setFullRankings(complete);
         setDraft(nextDraft);
         setOriginal(nextOriginal);
       })
@@ -100,7 +91,7 @@ export function ScoreDialog({ open, model, rankings, rankingsComplete = false, o
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [open, slug, rankingsComplete]);
+  }, [open, slug]);
 
   const dimensions = detail?.dimensions ?? EMPTY_DIMENSIONS;
   const scoreableDimensions = useMemo(
@@ -161,18 +152,18 @@ export function ScoreDialog({ open, model, rankings, rankingsComplete = false, o
   // The preview must not depend on the public ranking containing this model:
   // hidden models are absent there, but their draft still needs a live rank view.
   const previewRows = useMemo(() => {
-    const source = fullRankings?.models ?? rankings.models;
-    if (!model) return source;
-    if (source.some((row) => row.slug === model.slug)) return source;
-    return [...source, model];
-  }, [fullRankings, model, rankings.models]);
+    if (!model) return rankings.models;
+    if (rankings.models.some((row) => row.slug === model.slug)) return rankings.models;
+    return [...rankings.models, model];
+  }, [model, rankings.models]);
 
+  // The detail snapshot covers hidden models, so these baselines already match
+  // the saved ranking; resolveBaselines only raises them when the draft does.
   const fallbackBaselines = useMemo(() => {
-    if (fullRankings) return undefined;
     const next: Record<number, number | null> = {};
     for (const dimension of dimensions) next[dimension.id] = dimension.effectiveBaselineMax;
     return next;
-  }, [fullRankings, dimensions]);
+  }, [dimensions]);
 
   const preview = useMemo(() => {
     if (!model) return null;

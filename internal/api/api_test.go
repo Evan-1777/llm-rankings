@@ -1047,6 +1047,67 @@ func (e *env) dimensionBaselines(t *testing.T, client *http.Client, path string)
 	return out.Dimensions
 }
 
+func TestEffectiveBaselineNullKeys(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	code, body, _ := e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": "Empty", "description": "", "weight": 10,
+	}, nil)
+	if code != http.StatusCreated {
+		t.Fatalf("create unscored dimension = %d %s", code, body)
+	}
+	var created map[string]any
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := created["effectiveBaselineMax"]; ok {
+		t.Fatalf("write response must omit the effective baseline: %s", body)
+	}
+
+	for _, path := range []string{"/api/dimensions", "/api/export"} {
+		code, body, _ := e.do(t, e.admin, http.MethodGet, path, nil, nil)
+		if code != http.StatusOK {
+			t.Fatalf("GET %s = %d %s", path, code, body)
+		}
+		var payload struct {
+			Dimensions []map[string]any `json:"dimensions"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		found := false
+		for _, dimension := range payload.Dimensions {
+			if dimension["name"] != "Empty" {
+				continue
+			}
+			found = true
+			value, ok := dimension["effectiveBaselineMax"]
+			if !ok || value != nil {
+				t.Fatalf("%s must return a null effective baseline, got %+v", path, dimension)
+			}
+		}
+		if !found {
+			t.Fatalf("%s missing the unscored dimension", path)
+		}
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/bootstrap", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("bootstrap = %d %s", code, body)
+	}
+	var bootstrap struct {
+		Dimensions []map[string]any `json:"dimensions"`
+	}
+	if err := json.Unmarshal(body, &bootstrap); err != nil {
+		t.Fatal(err)
+	}
+	for _, dimension := range bootstrap.Dimensions {
+		if _, ok := dimension["effectiveBaselineMax"]; ok {
+			t.Fatalf("bootstrap must omit the effective baseline: %+v", dimension)
+		}
+	}
+}
+
 func scoreOfSlug(ranking rankingOutput, slug string) *float64 {
 	for _, model := range ranking.Models {
 		if model.Slug == slug {
@@ -1160,6 +1221,26 @@ func TestDimensionBaselineFlow(t *testing.T) {
 	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"baselineMax": "ten"}, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("baseline type error = %d %s, want 400", code, body)
+	}
+
+	// Text dimensions never carry a baseline, even through the write API.
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": "TextFixed", "description": "", "weight": 0, "textMode": true, "baselineMax": 5,
+	}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), `"baselineMax"`) {
+		t.Fatalf("create text dimension with baseline = %d %s, want 422", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"textMode": true, "weight": 0}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("switch to text = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"baselineMax": 4}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), `"baselineMax"`) {
+		t.Fatalf("text dimension baseline = %d %s, want 422", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"baselineMax": nil}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("clear text baseline = %d %s", code, body)
 	}
 }
 

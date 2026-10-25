@@ -7,12 +7,12 @@ import (
 )
 
 type exportResponse struct {
-	Version    int                 `json:"version"`
-	ExportedAt string              `json:"exportedAt"`
-	Dimensions []dimensionResponse `json:"dimensions"`
-	Models     []exportModel       `json:"models"`
-	Scores     []exportScore       `json:"scores"`
-	Texts      []exportText        `json:"texts"`
+	Version    int                         `json:"version"`
+	ExportedAt string                      `json:"exportedAt"`
+	Dimensions []dimensionSnapshotResponse `json:"dimensions"`
+	Models     []exportModel               `json:"models"`
+	Scores     []exportScore               `json:"scores"`
+	Texts      []exportText                `json:"texts"`
 }
 
 type exportModel struct {

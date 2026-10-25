@@ -21,12 +21,17 @@ type dimensionResponse struct {
 	TextMode    bool   `json:"textMode"`
 	// BaselineMax is the configured fixed baseline; null means automatic.
 	BaselineMax *float64 `json:"baselineMax"`
-	// EffectiveBaselineMax is only filled where the current snapshot matters:
-	// the dimension list and the export.
-	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax,omitempty"`
-	ArchivedAt           *string  `json:"archivedAt"`
-	CreatedAt            string   `json:"createdAt"`
-	UpdatedAt            string   `json:"updatedAt"`
+	ArchivedAt  *string  `json:"archivedAt"`
+	CreatedAt   string   `json:"createdAt"`
+	UpdatedAt   string   `json:"updatedAt"`
+}
+
+// dimensionSnapshotResponse adds the baseline resolved from the current
+// snapshot. Read endpoints that expose it always include the key, null when the
+// dimension has no valid score yet; write responses keep the plain payload.
+type dimensionSnapshotResponse struct {
+	dimensionResponse
+	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
 }
 
 type bootstrapResponse struct {
@@ -62,10 +67,10 @@ func toDimensionResponse(d store.Dimension) dimensionResponse {
 	}
 }
 
-func toDimensionResponses(dims []store.Dimension, effective map[int64]float64) []dimensionResponse {
-	out := make([]dimensionResponse, 0, len(dims))
+func toDimensionResponses(dims []store.Dimension, effective map[int64]float64) []dimensionSnapshotResponse {
+	out := make([]dimensionSnapshotResponse, 0, len(dims))
 	for _, d := range dims {
-		item := toDimensionResponse(d)
+		item := dimensionSnapshotResponse{dimensionResponse: toDimensionResponse(d)}
 		if baseline, ok := effective[d.ID]; ok {
 			value := baseline
 			item.EffectiveBaselineMax = &value
@@ -150,8 +155,12 @@ func validateDimension(name, description string, weight int, textMode bool, base
 	} else if textMode && weight != 0 {
 		fields["weight"] = "文字维度的权重固定为 0"
 	}
-	if baselineMax != nil && (math.IsNaN(*baselineMax) || math.IsInf(*baselineMax, 0) || *baselineMax <= 0) {
-		fields["baselineMax"] = "基准最大值需为大于 0 的数"
+	if baselineMax != nil {
+		if math.IsNaN(*baselineMax) || math.IsInf(*baselineMax, 0) || *baselineMax <= 0 {
+			fields["baselineMax"] = "基准最大值需为大于 0 的数"
+		} else if textMode {
+			fields["baselineMax"] = "文字维度不使用基准最大值"
+		}
 	}
 	if len(fields) == 0 {
 		return nil
