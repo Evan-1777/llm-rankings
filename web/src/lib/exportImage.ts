@@ -49,19 +49,22 @@ export interface ExportLayout {
  * enabled column, independent of which columns the viewport hides.
  */
 export function planExportLayout(dimensions: RankingDimension[], preferredWidth = 1200): ExportLayout {
-  const { groups, ungrouped } = boardColumns(dimensions);
+  const { columns: orderedColumns } = boardColumns(dimensions);
   const plans: Omit<ExportColumn, "x">[] = [
     { key: "rank", label: "综合排名", width: 72, kind: "rank" },
     { key: "model", label: "模型", width: 260, kind: "model" },
     { key: "score", label: "综合分", width: 96, kind: "score" },
-    ...groups.map((group) => ({ key: groupKey(group.name), label: group.name, width: 120, kind: "group" as const, group })),
-    ...ungrouped.map((dimension) => ({
-      key: dimensionKey(dimension.id),
-      label: dimension.name,
-      width: 100,
-      kind: "dimension" as const,
-      dimension,
-    })),
+    ...orderedColumns.map((column): Omit<ExportColumn, "x"> =>
+      column.kind === "group"
+        ? { key: groupKey(column.group.name), label: column.group.name, width: 120, kind: "group", group: column.group }
+        : {
+            key: dimensionKey(column.dimension.id),
+            label: column.dimension.name,
+            width: 100,
+            kind: "dimension",
+            dimension: column.dimension,
+          },
+    ),
   ];
 
   // Stretch the rating columns over the leftover width so the table fills the
@@ -121,13 +124,8 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
 
   ctx.font = `10px ${TOKENS.mono}`;
   for (const column of layout.columns) {
-    // The group colour mark sits inside the column, so its label clears it.
-    if (column.group) {
-      ctx.fillStyle = column.group.color;
-      ctx.fillRect(column.x + 2, headRule + 20, 2, 10);
-    }
     ctx.fillStyle = TOKENS.ink;
-    ctx.fillText(column.label, column.x + (column.kind === "group" ? 10 : 0), headRule + 28);
+    ctx.fillText(column.label, column.x, headRule + 28);
   }
   ctx.beginPath();
   ctx.moveTo(0, headRule + 40);
@@ -163,8 +161,6 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
       }
       if (column.kind === "group" && column.group) {
         const value = formatScore(groupValue(column.group, model.scores, baselines, model.skips));
-        ctx.fillStyle = column.group.color;
-        ctx.fillRect(column.x + 2, y - 9, 2, 12);
         ctx.fillStyle = TOKENS.ink;
         ctx.font = `13px ${TOKENS.mono}`;
         ctx.fillText(value, right(column) - ctx.measureText(value).width, y);

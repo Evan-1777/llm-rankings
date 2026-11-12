@@ -88,6 +88,36 @@ function SortHeader({
   );
 }
 
+/** One rating column: shared by group columns and single dimensions. */
+function ColumnHead({
+  label,
+  sub,
+  active,
+  dir,
+  onSort,
+  onDetail,
+}: {
+  label: string;
+  sub: string;
+  active: boolean;
+  dir: SortDir;
+  onSort: () => void;
+  onDetail: () => void;
+}) {
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
+      className={`${styles.th} ${styles.alignRight} ${styles.dimCol}`}
+    >
+      <SortButton label={label} sub={sub} active={active} dir={dir} align="right" onClick={onSort} />
+      <button type="button" className={styles.detailBtn} aria-label={`查看 ${label} 明细`} onClick={onDetail}>
+        <Icon name="chevron" size={10} />
+      </button>
+    </th>
+  );
+}
+
 export function Rankings() {
   useDocumentTitle("综合排行");
   const { data, loading, error, reload } = useAsyncData((signal) => api.rankings(false, signal), []);
@@ -283,61 +313,34 @@ export function Rankings() {
                     dir={sort.dir}
                     onClick={() => updateSort("score")}
                   />
-                  {columns.groups.map((group) => {
-                    const key = groupKey(group.name);
-                    return (
-                      <th
-                        key={group.name}
-                        scope="col"
-                        aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-                        className={`${styles.th} ${styles.alignRight} ${styles.groupCol}`}
-                      >
-                        <SortButton
+                  {columns.columns.map((column) => {
+                    if (column.kind === "group") {
+                      const { group } = column;
+                      const key = groupKey(group.name);
+                      return (
+                        <ColumnHead
+                          key={key}
                           label={group.name}
-                          dot={group.color}
                           sub={`${group.dimensions.length} 项 · 权重 ${group.weight}`}
                           active={sort.key === key}
                           dir={sort.dir}
-                          align="right"
-                          onClick={() => updateSort(key)}
+                          onSort={() => updateSort(key)}
+                          onDetail={() => openGroupDetail(group)}
                         />
-                        <button
-                          type="button"
-                          className={styles.detailBtn}
-                          aria-label={`查看 ${group.name} 组明细`}
-                          onClick={() => openGroupDetail(group)}
-                        >
-                          <Icon name="chevron" size={10} />
-                        </button>
-                      </th>
-                    );
-                  })}
-                  {columns.ungrouped.map((dimension) => {
+                      );
+                    }
+                    const { dimension } = column;
                     const key = dimensionKey(dimension.id);
                     return (
-                      <th
-                        key={dimension.id}
-                        scope="col"
-                        aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-                        className={`${styles.th} ${styles.alignRight} ${styles.dimCol}`}
-                      >
-                        <SortButton
-                          label={dimension.name}
-                          sub={`权重 ${dimension.weight}`}
-                          active={sort.key === key}
-                          dir={sort.dir}
-                          align="right"
-                          onClick={() => updateSort(key)}
-                        />
-                        <button
-                          type="button"
-                          className={styles.detailBtn}
-                          aria-label={`查看 ${dimension.name} 明细`}
-                          onClick={() => openDimensionDetail(dimension)}
-                        >
-                          <Icon name="chevron" size={10} />
-                        </button>
-                      </th>
+                      <ColumnHead
+                        key={key}
+                        label={dimension.name}
+                        sub={`权重 ${dimension.weight}`}
+                        active={sort.key === key}
+                        dir={sort.dir}
+                        onSort={() => updateSort(key)}
+                        onDetail={() => openDimensionDetail(dimension)}
+                      />
                     );
                   })}
                   <th scope="col" className={`${styles.th} ${styles.actionCol}`}>
@@ -362,29 +365,21 @@ export function Rankings() {
                       <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
                         {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                       </td>
-                      {columns.groups.map((group) => (
+                      {columns.columns.map((column) => (
                         <td
-                          key={group.name}
-                          className={`${styles.td} ${styles.groupCol} ${styles.alignRight} ${styles.groupValue}`}
-                        >
-                          <span className={styles.cellRule} style={{ borderLeftColor: group.color }}>
-                            {formatScore(groupValue(group, model.scores, baselines, model.skips))}
-                          </span>
-                        </td>
-                      ))}
-                      {columns.ungrouped.map((dimension) => (
-                        <td
-                          key={dimension.id}
+                          key={column.kind === "group" ? column.group.name : column.dimension.id}
                           className={`${styles.td} ${styles.dimCol} ${styles.alignRight} ${styles.dimValue}`}
                         >
                           <span className={styles.cellRule}>
-                            {model.skips.includes(dimension.id) ? (
+                            {column.kind === "group" ? (
+                              formatScore(groupValue(column.group, model.scores, baselines, model.skips))
+                            ) : model.skips.includes(column.dimension.id) ? (
                               <span className={ui.skip}>Skip</span>
                             ) : (
                               <DimensionScore
-                                value={model.scores[String(dimension.id)]}
-                                range={scoreRanges.get(dimension.id)}
-                                max={dimensionMaxima.get(dimension.id)}
+                                value={model.scores[String(column.dimension.id)]}
+                                range={scoreRanges.get(column.dimension.id)}
+                                max={dimensionMaxima.get(column.dimension.id)}
                               />
                             )}
                           </span>

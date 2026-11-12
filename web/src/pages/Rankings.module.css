@@ -68,8 +68,7 @@
   width: 112px;
 }
 
-.dimCol,
-.groupCol {
+.dimCol {
   width: 92px;
 }
 
@@ -208,12 +207,8 @@ tbody tr:last-child .td {
 }
 
 .dimValue {
-  font-size: 14px;
-}
-
-.groupValue {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -460,8 +455,7 @@ tbody tr:last-child .td {
     width: 80px;
   }
 
-  .dimCol,
-  .groupCol {
+  .dimCol {
     display: none;
   }
 

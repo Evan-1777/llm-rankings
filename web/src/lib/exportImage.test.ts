@@ -7,16 +7,16 @@ function dimension(id: number, weight: number, groupName = ""): RankingDimension
   return { id, name: `维度 ${id}`, weight, groupName, baselineMax: null, effectiveBaselineMax: null, skipMedian: 0 };
 }
 
-test("layout keeps every enabled column, groups before single dimensions", () => {
+test("layout keeps every enabled column in board order", () => {
   const layout = planExportLayout([
-    dimension(1, 40, "通用"),
-    dimension(2, 30, "通用"),
-    dimension(3, 20),
+    dimension(1, 20),
+    dimension(2, 40, "通用"),
+    dimension(3, 30, "通用"),
     dimension(4, 0, "通用"),
   ]);
   assert.deepEqual(
     layout.columns.map((column) => column.label),
-    ["综合排名", "模型", "综合分", "通用", "维度 3", "维度 4"],
+    ["综合排名", "模型", "综合分", "维度 1", "通用", "维度 4"],
   );
   // Neighbouring columns never overlap and stay inside the canvas.
   for (let index = 1; index < layout.columns.length; index += 1) {

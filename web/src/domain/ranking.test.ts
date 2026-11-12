@@ -446,6 +446,22 @@ test("group columns derive from groupName and reconcile the composite", () => {
   }
 });
 
+test("board columns place a group where its first member sits", () => {
+  const board = boardColumns([
+    { id: 1, name: "Loose A", weight: 10 },
+    { id: 2, name: "Grouped A1", weight: 10, groupName: "G1" },
+    { id: 3, name: "Loose B", weight: 10 },
+    { id: 4, name: "Grouped A2", weight: 10, groupName: "G1" },
+    { id: 5, name: "Grouped B1", weight: 10, groupName: "G2" },
+  ]);
+  assert.deepEqual(
+    board.columns.map((column) => (column.kind === "group" ? `group:${column.group.name}` : `dim:${column.dimension.id}`)),
+    ["dim:1", "group:G1", "dim:3", "group:G2"],
+  );
+  assert.deepEqual(board.groups.map((group) => group.name), ["G1", "G2"]);
+  assert.deepEqual(board.ungrouped.map((dimension) => dimension.id), [1, 3]);
+});
+
 test("group sort keys order by group value and keep hidden rows last", () => {
   const board = boardColumns(skipDimensions);
   const options = { groups: board.groups, baselines: skipBaselines };

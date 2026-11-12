@@ -172,34 +172,45 @@ export interface DimensionGroup<T extends Dimension = Dimension> {
   weight: number;
 }
 
+/** One board column: a merged group or a single dimension. */
+export type BoardColumn<T extends Dimension = Dimension> =
+  | { kind: "group"; group: DimensionGroup<T> }
+  | { kind: "dimension"; dimension: T };
+
 export interface BoardColumns<T extends Dimension = Dimension> {
+  /** The board's columns in render order: a group sits where its first member sits. */
+  columns: BoardColumn<T>[];
+  /** The group bundles alone, for consumers that render grouped blocks. */
   groups: DimensionGroup<T>[];
   ungrouped: T[];
 }
 
 /**
- * Splits the numeric dimensions into group columns and single-dimension columns.
- * A group is only a display bundle: text and zero-weight dimensions never join
- * one, and group order follows the first member's board position.
+ * Splits the numeric dimensions into group and single-dimension columns. A group
+ * is only a display bundle: text and zero-weight dimensions never join one, and
+ * its column keeps the board position of its first member.
  */
 export function boardColumns<T extends Dimension>(dimensions: T[]): BoardColumns<T> {
   const groups = new Map<string, DimensionGroup<T>>();
+  const columns: BoardColumn<T>[] = [];
   const ungrouped: T[] = [];
   for (const dimension of dimensions) {
     const name = (dimension.groupName ?? "").trim();
     if (!name || dimension.weight <= 0) {
       ungrouped.push(dimension);
+      columns.push({ kind: "dimension", dimension });
       continue;
     }
     let group = groups.get(name);
     if (!group) {
       group = { name, color: GROUP_COLORS[groups.size % GROUP_COLORS.length], dimensions: [], weight: 0 };
       groups.set(name, group);
+      columns.push({ kind: "group", group });
     }
     group.dimensions.push(dimension);
     group.weight += dimension.weight;
   }
-  return { groups: [...groups.values()], ungrouped };
+  return { columns, groups: [...groups.values()], ungrouped };
 }
 
 export function groupKey(name: string): string {
