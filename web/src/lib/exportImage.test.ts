@@ -92,6 +92,41 @@ test("numeric columns draw header, values and Skip on one right anchor", () => {
   assert.equal(drawn.find((item) => item.text === "Alpha")?.x, layout.columns[1].x);
 });
 
+/** Group members carry fixed baselines so the exported group value is a real number. */
+function groupedDimension(id: number, weight: number, groupName: string, baseline: number): RankingDimension {
+  return { id, name: `维度 ${id}`, weight, groupName, baselineMax: baseline, effectiveBaselineMax: baseline, skipMedian: 0 };
+}
+
+test("group column draws its value in the dimension format on the same anchor", () => {
+  const dimensions = [groupedDimension(1, 20, "通用", 5), groupedDimension(2, 10, "通用", 4)];
+  const rankings: Rankings = {
+    totalWeight: 30,
+    updatedAt: null,
+    dimensions,
+    models: [
+      {
+        slug: "a",
+        name: "Alpha",
+        vendor: "Vendor",
+        hidden: false,
+        score: 50,
+        rank: 1,
+        scoredCount: 2,
+        scores: { "1": 4.5, "2": 3.6 },
+        skips: [],
+      },
+    ],
+  };
+  const { canvas, drawn, width } = recorder();
+  renderExportCanvas(canvas, rankings, new Date("2026-11-12T00:00:00Z"));
+  const group = planExportLayout(dimensions).columns.find((column) => column.kind === "group");
+  assert.ok(group);
+  // Both members convert to 90, so the group averages to one decimal like the dimension columns.
+  const call = drawn.find((item) => item.text === "90.0");
+  assert.ok(call, `group value missing: ${drawn.map((item) => item.text).join(", ")}`);
+  assert.equal(call.x + width(call.text), group.x + group.width - 8);
+});
+
 test("layout widens instead of clipping many columns", () => {
   const many = Array.from({ length: 20 }, (_, index) => dimension(index + 1, 10));
   const layout = planExportLayout(many, 1200);

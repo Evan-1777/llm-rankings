@@ -40,7 +40,9 @@
 .th {
   position: relative;
   height: 58px;
-  padding: 14px 12px 13px;
+  /* The label shares a row with the vertically centred detail chevron, so the
+     block sits low enough for the text itself to land on the row's centre. */
+  padding: 21px 12px 6px;
   border-bottom: 1px solid var(--ink);
   vertical-align: top;
   text-align: left;
@@ -458,7 +460,7 @@ tbody tr:last-child .td {
 
   .th {
     height: 50px;
-    padding: 10px 4px 11px;
+    padding: 17px 4px 4px;
   }
 
   .th:first-child,

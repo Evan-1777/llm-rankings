@@ -163,7 +163,8 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
         continue;
       }
       if (column.kind === "group" && column.group) {
-        const value = formatScore(groupValue(column.group, model.scores, baselines, model.skips));
+        // Same format as the dimension columns beside it.
+        const value = formatDimension(groupValue(column.group, model.scores, baselines, model.skips));
         ctx.fillStyle = TOKENS.ink;
         ctx.font = `13px ${TOKENS.mono}`;
         ctx.fillText(value, right(column) - ctx.measureText(value).width, y);

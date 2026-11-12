@@ -4,7 +4,7 @@ import styles from "./SortButton.module.css";
 
 interface SortButtonProps {
   label: string;
-  /** Second line under the label: the column weight or a group summary. */
+  /** Reserved second line under the label; the workbench renders the weight here. */
   sub?: string;
   active: boolean;
   dir: SortDir;

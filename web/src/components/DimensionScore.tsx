@@ -7,7 +7,8 @@ import styles from "./DimensionScore.module.css";
 
 interface DimensionScoreProps {
   value: number | null | undefined;
-  range?: ScoreRange;
+  /** Display range for the tone and the percentage modes; null means none. */
+  range?: ScoreRange | null;
   max?: number;
   className?: string;
 }

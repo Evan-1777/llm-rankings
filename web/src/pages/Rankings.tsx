@@ -19,7 +19,6 @@ import {
   boardColumns,
   dimensionKey,
   dimensionMax,
-  formatScore,
   groupKey,
   groupValue,
   snapshotBaselines,
@@ -92,14 +91,12 @@ function SortHeader({
 /** One rating column: shared by group columns and single dimensions. */
 function ColumnHead({
   label,
-  sub,
   active,
   dir,
   onSort,
   onDetail,
 }: {
   label: string;
-  sub: string;
   active: boolean;
   dir: SortDir;
   onSort: () => void;
@@ -113,7 +110,6 @@ function ColumnHead({
     >
       <SortButton
         label={label}
-        sub={sub}
         active={active}
         dir={dir}
         align="right"
@@ -158,6 +154,18 @@ export function Rankings() {
   const dimensionMaxima = useMemo(
     () => new Map(dimensions.map((dimension) => [dimension.id, dimensionMax(models, dimension.id)])),
     [models, dimensions],
+  );
+  // A group column reads like a dimension column, so its display range and
+  // maximum come from the group values the board actually shows.
+  const groupDisplays = useMemo(
+    () =>
+      new Map(
+        columns.groups.map((group) => {
+          const values = models.map((model) => groupValue(group, model.scores, baselines, model.skips));
+          return [group.name, { range: scoreRange(values), max: scoreMax(values) }] as const;
+        }),
+      ),
+    [columns.groups, models, baselines],
   );
   const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
   const compositeMax = useMemo(() => scoreMax(models.map((model) => model.score)), [models]);
@@ -329,7 +337,6 @@ export function Rankings() {
                         <ColumnHead
                           key={key}
                           label={group.name}
-                          sub={`${group.dimensions.length} 项`}
                           active={sort.key === key}
                           dir={sort.dir}
                           onSort={() => updateSort(key)}
@@ -343,7 +350,6 @@ export function Rankings() {
                       <ColumnHead
                         key={key}
                         label={dimension.name}
-                        sub=""
                         active={sort.key === key}
                         dir={sort.dir}
                         onSort={() => updateSort(key)}
@@ -380,9 +386,11 @@ export function Rankings() {
                         >
                           <span className={styles.cellRule}>
                             {column.kind === "group" ? (
-                              <span className={scoreStyles.score}>
-                                {formatScore(groupValue(column.group, model.scores, baselines, model.skips))}
-                              </span>
+                              <DimensionScore
+                                value={groupValue(column.group, model.scores, baselines, model.skips)}
+                                range={groupDisplays.get(column.group.name)?.range}
+                                max={groupDisplays.get(column.group.name)?.max}
+                              />
                             ) : model.skips.includes(column.dimension.id) ? (
                               <span className={scoreStyles.score}>
                                 <span className={ui.skip}>Skip</span>
