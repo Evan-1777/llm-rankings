@@ -13,6 +13,7 @@ import (
 type rankingSnapshot struct {
 	result     domain.Result
 	dimensions []store.Dimension
+	skips      []store.Skip
 	updatedAt  *time.Time
 }
 
@@ -32,16 +33,21 @@ func (s *Server) loadRanking(ctx context.Context) (rankingSnapshot, error) {
 	if err != nil {
 		return rankingSnapshot{}, err
 	}
+	skips, err := s.store.AllSkips(ctx)
+	if err != nil {
+		return rankingSnapshot{}, err
+	}
 	result := domain.Compute(domain.Input{
 		Dimensions: toDomainDimensions(dims),
 		Models:     toDomainModels(models),
 		Scores:     toDomainScores(scores),
+		Skips:      toDomainSkips(skips),
 	})
 	updatedAt, err := s.store.MaxUpdatedAt(ctx)
 	if err != nil {
 		return rankingSnapshot{}, err
 	}
-	return rankingSnapshot{result: result, dimensions: dims, updatedAt: updatedAt}, nil
+	return rankingSnapshot{result: result, dimensions: dims, skips: skips, updatedAt: updatedAt}, nil
 }
 
 type rankingsResponse struct {
@@ -55,22 +61,28 @@ type rankingDimension struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Weight int    `json:"weight"`
+	// GroupName bundles dimensions into one board column; empty means no group.
+	GroupName string `json:"groupName"`
 	// BaselineMax is the configured fixed baseline; null means automatic.
 	BaselineMax *float64 `json:"baselineMax"`
 	// EffectiveBaselineMax is the baseline used for this snapshot.
 	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
+	// SkipMedian is the converted value a skip contributes to the composite.
+	SkipMedian *float64 `json:"skipMedian"`
 }
 
 type rankingModel struct {
-	Slug        string             `json:"slug"`
-	Name        string             `json:"name"`
-	Vendor      string             `json:"vendor"`
-	Hidden      bool               `json:"hidden"`
-	Score       *float64           `json:"score"`
-	Coverage    float64            `json:"coverage"`
-	Provisional bool               `json:"provisional"`
-	Rank        *int               `json:"rank"`
+	Slug   string   `json:"slug"`
+	Name   string   `json:"name"`
+	Vendor string   `json:"vendor"`
+	Hidden bool     `json:"hidden"`
+	Score  *float64 `json:"score"`
+	Rank   *int     `json:"rank"`
+	// ScoredCount is the rated, weighted, non-skipped dimension count.
+	ScoredCount int                `json:"scoredCount"`
 	Scores      map[string]float64 `json:"scores"`
+	// Skips lists the dimensions this model does not use.
+	Skips []int64 `json:"skips"`
 }
 
 func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
@@ -92,12 +104,21 @@ func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
 		if d.TextMode {
 			continue
 		}
-		item := rankingDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, BaselineMax: d.BaselineMax}
+		item := rankingDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, GroupName: d.GroupName, BaselineMax: d.BaselineMax}
 		if baseline, ok := snapshot.result.EffectiveBaselines[d.ID]; ok {
 			value := baseline
 			item.EffectiveBaselineMax = &value
 		}
+		if median, ok := snapshot.result.SkipMedians[d.ID]; ok {
+			value := median
+			item.SkipMedian = &value
+		}
 		dimensions = append(dimensions, item)
+	}
+
+	skipsByModel := make(map[int64][]int64, len(snapshot.skips))
+	for _, skip := range snapshot.skips {
+		skipsByModel[skip.ModelID] = append(skipsByModel[skip.ModelID], skip.DimensionID)
 	}
 
 	models := make([]rankingModel, 0, len(snapshot.result.Rows))
@@ -114,16 +135,20 @@ func (s *Server) handleRankings(w http.ResponseWriter, r *http.Request) {
 		for id, value := range row.DimensionScores {
 			scores[strconv.FormatInt(id, 10)] = value
 		}
+		skips := skipsByModel[row.ID]
+		if skips == nil {
+			skips = []int64{}
+		}
 		models = append(models, rankingModel{
 			Slug:        row.Slug,
 			Name:        row.Name,
 			Vendor:      row.Vendor,
 			Hidden:      row.Hidden,
 			Score:       row.Score,
-			Coverage:    row.Coverage,
-			Provisional: row.Provisional,
 			Rank:        rank,
+			ScoredCount: row.ScoredCount,
 			Scores:      scores,
+			Skips:       skips,
 		})
 	}
 
@@ -161,6 +186,14 @@ func toDomainScores(scores []store.Score) []domain.Score {
 	out := make([]domain.Score, 0, len(scores))
 	for _, sc := range scores {
 		out = append(out, domain.Score{ModelID: sc.ModelID, DimensionID: sc.DimensionID, Value: sc.Value})
+	}
+	return out
+}
+
+func toDomainSkips(skips []store.Skip) []domain.Skip {
+	out := make([]domain.Skip, 0, len(skips))
+	for _, skip := range skips {
+		out = append(out, domain.Skip{ModelID: skip.ModelID, DimensionID: skip.DimensionID})
 	}
 	return out
 }

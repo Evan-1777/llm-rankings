@@ -21,9 +21,11 @@ type dimensionResponse struct {
 	TextMode    bool   `json:"textMode"`
 	// BaselineMax is the configured fixed baseline; null means automatic.
 	BaselineMax *float64 `json:"baselineMax"`
-	ArchivedAt  *string  `json:"archivedAt"`
-	CreatedAt   string   `json:"createdAt"`
-	UpdatedAt   string   `json:"updatedAt"`
+	// GroupName bundles dimensions that share a display name; empty means no group.
+	GroupName  string  `json:"groupName"`
+	ArchivedAt *string `json:"archivedAt"`
+	CreatedAt  string  `json:"createdAt"`
+	UpdatedAt  string  `json:"updatedAt"`
 }
 
 // dimensionSnapshotResponse adds the baseline resolved from the current
@@ -61,6 +63,7 @@ func toDimensionResponse(d store.Dimension) dimensionResponse {
 		Weight:      d.Weight,
 		TextMode:    d.TextMode,
 		BaselineMax: d.BaselineMax,
+		GroupName:   d.GroupName,
 		ArchivedAt:  archived,
 		CreatedAt:   d.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   d.UpdatedAt.UTC().Format(time.RFC3339),
@@ -111,6 +114,7 @@ type dimensionInput struct {
 	Weight      int      `json:"weight"`
 	TextMode    bool     `json:"textMode"`
 	BaselineMax *float64 `json:"baselineMax"`
+	GroupName   *string  `json:"groupName"`
 }
 
 // optionalFloat distinguishes an absent field from an explicit null, so a
@@ -134,18 +138,43 @@ func (o *optionalFloat) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type dimensionPatch struct {
-	Name        *string       `json:"name"`
-	Description *string       `json:"description"`
-	Weight      *int          `json:"weight"`
-	TextMode    *bool         `json:"textMode"`
-	BaselineMax optionalFloat `json:"baselineMax"`
+// optionalString distinguishes an absent field from an explicit null, so a
+// partial update can keep the stored group name or clear it.
+type optionalString struct {
+	Set   bool
+	Value *string
 }
 
-func validateDimension(name, description string, weight int, textMode bool, baselineMax *float64) map[string]string {
+func (o *optionalString) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	o.Value = &value
+	return nil
+}
+
+type dimensionPatch struct {
+	Name        *string        `json:"name"`
+	Description *string        `json:"description"`
+	Weight      *int           `json:"weight"`
+	TextMode    *bool          `json:"textMode"`
+	BaselineMax optionalFloat  `json:"baselineMax"`
+	GroupName   optionalString `json:"groupName"`
+}
+
+func validateDimension(name, description string, weight int, textMode bool, baselineMax *float64, groupName string) map[string]string {
 	fields := map[string]string{}
 	if length := utf8.RuneCountInString(name); length < 1 || length > 40 {
 		fields["name"] = "名称需为 1–40 个字符"
+	}
+	if utf8.RuneCountInString(groupName) > 20 {
+		fields["groupName"] = "维度组名不能超过 20 个字符"
 	}
 	if utf8.RuneCountInString(description) > 500 {
 		fields["description"] = "说明不能超过 500 个字符"
@@ -211,11 +240,12 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if fields := validateDimension(input.Name, input.Description, input.Weight, input.TextMode, input.BaselineMax); fields != nil {
+	groupName := trimGroupName(input.GroupName)
+	if fields := validateDimension(input.Name, input.Description, input.Weight, input.TextMode, input.BaselineMax, groupName); fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度信息", fields)
 		return
 	}
-	d, err := s.store.CreateDimension(r.Context(), input.Name, input.Description, input.Weight, input.TextMode, input.BaselineMax)
+	d, err := s.store.CreateDimension(r.Context(), input.Name, input.Description, input.Weight, input.TextMode, input.BaselineMax, groupName)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeFields(w, http.StatusConflict, "conflict", "维度名称已存在", map[string]string{"name": "维度名称已存在"})
@@ -236,7 +266,7 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSON(w, r, &patch) {
 		return
 	}
-	if patch.Name == nil && patch.Description == nil && patch.Weight == nil && patch.TextMode == nil && !patch.BaselineMax.Set {
+	if patch.Name == nil && patch.Description == nil && patch.Weight == nil && patch.TextMode == nil && !patch.BaselineMax.Set && !patch.GroupName.Set {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "没有需要更新的字段", map[string]string{"_": "没有需要更新的字段"})
 		return
 	}
@@ -247,8 +277,12 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	}
 	name, description, weight, textMode := current.Name, current.Description, current.Weight, current.TextMode
 	baselineMax := current.BaselineMax
+	groupName := current.GroupName
 	if patch.BaselineMax.Set {
 		baselineMax = patch.BaselineMax.Value
+	}
+	if patch.GroupName.Set {
+		groupName = trimGroupName(patch.GroupName.Value)
 	}
 	if patch.Name != nil {
 		name = strings.TrimSpace(*patch.Name)
@@ -262,11 +296,11 @@ func (s *Server) handleUpdateDimension(w http.ResponseWriter, r *http.Request) {
 	if patch.TextMode != nil {
 		textMode = *patch.TextMode
 	}
-	if fields := validateDimension(name, description, weight, textMode, baselineMax); fields != nil {
+	if fields := validateDimension(name, description, weight, textMode, baselineMax, groupName); fields != nil {
 		writeFields(w, http.StatusUnprocessableEntity, "validation", "请检查维度信息", fields)
 		return
 	}
-	updated, err := s.store.UpdateDimension(r.Context(), id, name, description, weight, textMode, baselineMax)
+	updated, err := s.store.UpdateDimension(r.Context(), id, name, description, weight, textMode, baselineMax, groupName)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			writeFields(w, http.StatusConflict, "conflict", "维度名称已存在", map[string]string{"name": "维度名称已存在"})
@@ -309,6 +343,15 @@ func (s *Server) handleDeleteDimension(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// trimGroupName normalizes a nullable group name; an absent or empty value
+// means the dimension belongs to no group.
+func trimGroupName(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func parseID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {

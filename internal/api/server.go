@@ -66,6 +66,8 @@ func New(st *store.Store, mgr *auth.Manager, logger *slog.Logger, dist fs.FS, tr
 	mux.HandleFunc("POST /api/models/{slug}/restore", s.admin(s.handleRestoreModel))
 	mux.HandleFunc("PUT /api/models/{slug}/scores/{dimensionId}", s.admin(s.handlePutScore))
 	mux.HandleFunc("DELETE /api/models/{slug}/scores/{dimensionId}", s.admin(s.handleDeleteScore))
+	mux.HandleFunc("PUT /api/models/{slug}/skips/{dimensionId}", s.admin(s.handlePutSkip))
+	mux.HandleFunc("DELETE /api/models/{slug}/skips/{dimensionId}", s.admin(s.handleDeleteSkip))
 	mux.HandleFunc("PUT /api/models/{slug}/texts/{dimensionId}", s.admin(s.handlePutModelText))
 
 	mux.HandleFunc("GET /api/export", s.admin(s.handleExport))

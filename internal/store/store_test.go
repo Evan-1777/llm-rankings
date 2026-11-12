@@ -65,7 +65,7 @@ func TestDimensionLifecycle(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
 
-	d, err := s.CreateDimension(ctx, "Reasoning", "reasoning quality", 25, false, nil)
+	d, err := s.CreateDimension(ctx, "Reasoning", "reasoning quality", 25, false, nil, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -73,39 +73,39 @@ func TestDimensionLifecycle(t *testing.T) {
 		t.Fatalf("unexpected dimension: %+v", d)
 	}
 	fixed := 7.5
-	fixedDim, err := s.CreateDimension(ctx, "Fixed", "", 25, false, &fixed)
+	fixedDim, err := s.CreateDimension(ctx, "Fixed", "", 25, false, &fixed, "")
 	if err != nil || fixedDim.BaselineMax == nil || *fixedDim.BaselineMax != 7.5 {
 		t.Fatalf("create with baseline: %+v %v", fixedDim, err)
 	}
-	if _, err := s.CreateDimension(ctx, "ZeroBaseline", "", 10, false, ptrFloat(0)); err == nil {
+	if _, err := s.CreateDimension(ctx, "ZeroBaseline", "", 10, false, ptrFloat(0), ""); err == nil {
 		t.Fatal("baseline 0 must be rejected by the schema")
 	}
-	if _, err := s.CreateDimension(ctx, "NegativeBaseline", "", 10, false, ptrFloat(-1)); err == nil {
+	if _, err := s.CreateDimension(ctx, "NegativeBaseline", "", 10, false, ptrFloat(-1), ""); err == nil {
 		t.Fatal("negative baseline must be rejected by the schema")
 	}
-	if _, err := s.CreateDimension(ctx, "reasoning", "", 10, false, nil); !errors.Is(err, ErrConflict) {
+	if _, err := s.CreateDimension(ctx, "reasoning", "", 10, false, nil, ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate name (case-insensitive) error = %v", err)
 	}
-	if _, err := s.CreateDimension(ctx, "Bad", "", -1, false, nil); err == nil {
+	if _, err := s.CreateDimension(ctx, "Bad", "", -1, false, nil, ""); err == nil {
 		t.Fatal("weight -1 must be rejected by the schema")
 	}
-	if _, err := s.CreateDimension(ctx, "Bad2", "", 101, false, nil); err == nil {
+	if _, err := s.CreateDimension(ctx, "Bad2", "", 101, false, nil, ""); err == nil {
 		t.Fatal("weight 101 must be rejected by the schema")
 	}
 
-	updated, err := s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 0, false, nil)
+	updated, err := s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 0, false, nil, "")
 	if err != nil || updated.Weight != 0 {
 		t.Fatalf("update weight: %+v %v", updated, err)
 	}
-	updated, err = s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false, nil)
+	updated, err = s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false, nil, "")
 	if err != nil || updated.Weight != 100 {
 		t.Fatalf("update weight 100: %+v %v", updated, err)
 	}
-	updated, err = s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false, &fixed)
+	updated, err = s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false, &fixed, "")
 	if err != nil || updated.BaselineMax == nil || *updated.BaselineMax != 7.5 {
 		t.Fatalf("update baseline: %+v %v", updated, err)
 	}
-	cleared, err := s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false, nil)
+	cleared, err := s.UpdateDimension(ctx, d.ID, "Reasoning", "updated", 100, false, nil, "")
 	if err != nil || cleared.BaselineMax != nil {
 		t.Fatalf("clear baseline: %+v %v", cleared, err)
 	}
@@ -143,7 +143,7 @@ func TestDimensionLifecycle(t *testing.T) {
 func TestModelAndScoreLifecycle(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
-	d, _ := s.CreateDimension(ctx, "Quality", "", 100, false, nil)
+	d, _ := s.CreateDimension(ctx, "Quality", "", 100, false, nil, "")
 	if stamp, err := s.MaxUpdatedAt(ctx); err != nil || stamp == nil {
 		t.Fatalf("dimension must update max timestamp: %v %v", stamp, err)
 	}
@@ -302,9 +302,9 @@ func TestCommentaryMigrationKeepsLegacyModels(t *testing.T) {
 func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
-	active, _ := s.CreateDimension(ctx, "Active", "", 50, false, nil)
-	idle, _ := s.CreateDimension(ctx, "Idle", "", 0, false, nil)
-	archived, _ := s.CreateDimension(ctx, "Archived", "", 50, false, nil)
+	active, _ := s.CreateDimension(ctx, "Active", "", 50, false, nil, "")
+	idle, _ := s.CreateDimension(ctx, "Idle", "", 0, false, nil, "")
+	archived, _ := s.CreateDimension(ctx, "Archived", "", 50, false, nil, "")
 	if _, err := s.CreateModel(ctx, "m", "Model", "", ""); err != nil {
 		t.Fatalf("create model: %v", err)
 	}
@@ -404,9 +404,9 @@ func TestDimensionOrderMigrationKeepsLegacyOrder(t *testing.T) {
 func TestDimensionOrderAppendArchiveRestoreAndRestart(t *testing.T) {
 	s, path := openTest(t)
 	ctx := context.Background()
-	a, _ := s.CreateDimension(ctx, "A", "", 10, false, nil)
-	b, _ := s.CreateDimension(ctx, "B", "", 10, false, nil)
-	c, _ := s.CreateDimension(ctx, "C", "", 10, false, nil)
+	a, _ := s.CreateDimension(ctx, "A", "", 10, false, nil, "")
+	b, _ := s.CreateDimension(ctx, "B", "", 10, false, nil, "")
+	c, _ := s.CreateDimension(ctx, "C", "", 10, false, nil, "")
 
 	if err := s.ReorderDimensions(ctx, []int64{c.ID, a.ID, b.ID}); err != nil {
 		t.Fatalf("reorder: %v", err)
@@ -429,7 +429,7 @@ func TestDimensionOrderAppendArchiveRestoreAndRestart(t *testing.T) {
 	if err := s.DeleteDimension(ctx, c.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	d, _ := s.CreateDimension(ctx, "D", "", 10, false, nil)
+	d, _ := s.CreateDimension(ctx, "D", "", 10, false, nil, "")
 	all, _ = s.ListDimensions(ctx, true)
 	if !equalIDs(all, a.ID, b.ID, d.ID) {
 		t.Fatalf("new dimension not appended: %v", ids(all))
@@ -569,9 +569,9 @@ func TestReorderDimensionsRejectsMismatch(t *testing.T) {
 	if err := s.ReorderDimensions(ctx, nil); err != nil {
 		t.Fatalf("empty store should accept empty order: %v", err)
 	}
-	a, _ := s.CreateDimension(ctx, "A", "", 10, false, nil)
-	b, _ := s.CreateDimension(ctx, "B", "", 10, false, nil)
-	c, _ := s.CreateDimension(ctx, "C", "", 10, false, nil)
+	a, _ := s.CreateDimension(ctx, "A", "", 10, false, nil, "")
+	b, _ := s.CreateDimension(ctx, "B", "", 10, false, nil, "")
+	c, _ := s.CreateDimension(ctx, "C", "", 10, false, nil, "")
 	before, _ := s.ListDimensions(ctx, true)
 	beforeStamps := make([]time.Time, len(before))
 	for i, dim := range before {
@@ -667,11 +667,11 @@ func TestTextDimensionStorageAndCascade(t *testing.T) {
 	s, _ := openTest(t)
 	ctx := context.Background()
 
-	text, err := s.CreateDimension(ctx, "Notes", "", 0, true, nil)
+	text, err := s.CreateDimension(ctx, "Notes", "", 0, true, nil, "")
 	if err != nil || !text.TextMode {
 		t.Fatalf("create text dimension: %+v %v", text, err)
 	}
-	numeric, err := s.CreateDimension(ctx, "Quality", "", 50, false, nil)
+	numeric, err := s.CreateDimension(ctx, "Quality", "", 50, false, nil, "")
 	if err != nil || numeric.TextMode {
 		t.Fatalf("create numeric dimension: %+v %v", numeric, err)
 	}
@@ -734,5 +734,91 @@ func TestTextDimensionStorageAndCascade(t *testing.T) {
 	all, _ = s.AllTexts(ctx)
 	if len(all) != 0 {
 		t.Fatalf("dimension cascade left texts: %+v", all)
+	}
+}
+
+func TestDimensionGroupNameRoundTrip(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	created, err := s.CreateDimension(ctx, "Reasoning", "", 50, false, nil, "通用能力")
+	if err != nil || created.GroupName != "通用能力" {
+		t.Fatalf("create with group = %+v %v", created, err)
+	}
+	renamed, err := s.UpdateDimension(ctx, created.ID, "Reasoning", "", 50, false, nil, "工程实践")
+	if err != nil || renamed.GroupName != "工程实践" {
+		t.Fatalf("rename group = %+v %v", renamed, err)
+	}
+	cleared, err := s.UpdateDimension(ctx, created.ID, "Reasoning", "", 50, false, nil, "")
+	if err != nil || cleared.GroupName != "" {
+		t.Fatalf("clear group = %+v %v", cleared, err)
+	}
+	listed, err := s.ListDimensions(ctx, false)
+	if err != nil || len(listed) != 1 || listed[0].GroupName != "" {
+		t.Fatalf("list group = %+v %v", listed, err)
+	}
+}
+
+func TestSkipLifecycleAndCascade(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	d, err := s.CreateDimension(ctx, "Reasoning", "", 50, false, nil, "")
+	if err != nil {
+		t.Fatalf("dimension: %v", err)
+	}
+	m, err := s.CreateModel(ctx, "m", "Model", "", "")
+	if err != nil {
+		t.Fatalf("model: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := s.SetSkip(ctx, "m", d.ID); err != nil {
+			t.Fatalf("set skip #%d: %v", i+1, err)
+		}
+	}
+	skips, err := s.AllSkips(ctx)
+	if err != nil || len(skips) != 1 || skips[0].ModelID != m.ID || skips[0].DimensionID != d.ID {
+		t.Fatalf("all skips = %+v %v", skips, err)
+	}
+	ids, err := s.SkipsForModel(ctx, m.ID)
+	if err != nil || len(ids) != 1 || ids[0] != d.ID {
+		t.Fatalf("model skips = %+v %v", ids, err)
+	}
+	if err := s.SetSkip(ctx, "missing", d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown model skip = %v, want ErrNotFound", err)
+	}
+	if err := s.SetSkip(ctx, "m", 9999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown dimension skip = %v, want ErrNotFound", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := s.DeleteSkip(ctx, "m", d.ID); err != nil {
+			t.Fatalf("delete skip #%d: %v", i+1, err)
+		}
+	}
+	if err := s.DeleteSkip(ctx, "missing", d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown model delete = %v, want ErrNotFound", err)
+	}
+
+	if err := s.SetSkip(ctx, "m", d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteModel(ctx, m.ID); err != nil {
+		t.Fatalf("delete model: %v", err)
+	}
+	if all, _ := s.AllSkips(ctx); len(all) != 0 {
+		t.Fatalf("model cascade left skips: %+v", all)
+	}
+
+	other, _ := s.CreateModel(ctx, "other", "Other", "", "")
+	if err := s.SetSkip(ctx, "other", d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteDimension(ctx, d.ID); err != nil {
+		t.Fatalf("delete dimension: %v", err)
+	}
+	if all, _ := s.AllSkips(ctx); len(all) != 0 {
+		t.Fatalf("dimension cascade left skips: %+v (model %d)", all, other.ID)
 	}
 }

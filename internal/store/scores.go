@@ -62,6 +62,38 @@ func (s *Store) AllScores(ctx context.Context) ([]Score, error) {
 	return out, rows.Err()
 }
 
+// resolveRatingTarget resolves the writable model and dimension behind a rating
+// change: an unknown model or dimension is ErrNotFound, an archived dimension is
+// ErrArchived and a text dimension is ErrTextDimension. Zero-weight dimensions
+// stay writable because the stored value is still displayed.
+func (s *Store) resolveRatingTarget(ctx context.Context, modelSlug string, dimensionID int64) (int64, error) {
+	var modelID int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE AND archived_at IS NULL`, modelSlug).Scan(&modelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	var archived sql.NullString
+	var textMode bool
+	err = s.db.QueryRowContext(ctx, `SELECT archived_at, text_mode FROM dimensions WHERE id = ?`, dimensionID).Scan(&archived, &textMode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	if archived.Valid {
+		return 0, ErrArchived
+	}
+	if textMode {
+		return 0, ErrTextDimension
+	}
+	return modelID, nil
+}
+
 // UpsertScore writes a rating for an enabled dimension. A nil note keeps the
 // stored note on conflict; an explicit note replaces it (including an empty one).
 func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID int64, value float64, note *string) (Score, error) {
@@ -70,29 +102,9 @@ func (s *Store) UpsertScore(ctx context.Context, modelSlug string, dimensionID i
 	}
 	value = math.Round(value*10) / 10
 
-	var modelID int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM models WHERE slug = ? COLLATE NOCASE AND archived_at IS NULL`, modelSlug).Scan(&modelID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Score{}, ErrNotFound
-	}
+	modelID, err := s.resolveRatingTarget(ctx, modelSlug, dimensionID)
 	if err != nil {
 		return Score{}, err
-	}
-
-	var archived sql.NullString
-	var textMode bool
-	err = s.db.QueryRowContext(ctx, `SELECT archived_at, text_mode FROM dimensions WHERE id = ?`, dimensionID).Scan(&archived, &textMode)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Score{}, ErrNotFound
-	}
-	if err != nil {
-		return Score{}, err
-	}
-	if archived.Valid {
-		return Score{}, ErrArchived
-	}
-	if textMode {
-		return Score{}, ErrTextDimension
 	}
 
 	now := nowStamp()

@@ -50,27 +50,31 @@ type modelDetailResponse struct {
 	CommentaryPublic *bool            `json:"commentaryPublic,omitempty"`
 	CommentaryAt     *string          `json:"commentaryAt,omitempty"`
 	Score            *float64         `json:"score"`
-	Coverage         float64          `json:"coverage"`
-	Provisional      bool             `json:"provisional"`
 	Rank             *int             `json:"rank"`
 	Dimensions       []modelDimension `json:"dimensions"`
 	ScoredCount      int              `json:"scoredCount"`
 	DimensionCount   int              `json:"dimensionCount"`
-	UpdatedAt        string           `json:"updatedAt"`
+	// Skips lists the dimensions this model does not use.
+	Skips     []int64 `json:"skips"`
+	UpdatedAt string  `json:"updatedAt"`
 }
 
 type modelDimension struct {
-	ID       int64    `json:"id"`
-	Name     string   `json:"name"`
-	Weight   int      `json:"weight"`
-	TextMode bool     `json:"textMode"`
-	Value    *float64 `json:"value"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Weight   int    `json:"weight"`
+	TextMode bool   `json:"textMode"`
+	// GroupName bundles dimensions into one board column; empty means no group.
+	GroupName string   `json:"groupName"`
+	Value     *float64 `json:"value"`
 	// BaselineMax is the configured fixed baseline; null means automatic.
 	BaselineMax *float64 `json:"baselineMax"`
 	// EffectiveBaselineMax is the baseline behind this model's composite score.
 	EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
-	Text                 *string  `json:"text,omitempty"`
-	Note                 *string  `json:"note,omitempty"`
+	// SkipMedian is the converted value a skip contributes to the composite.
+	SkipMedian *float64 `json:"skipMedian"`
+	Text       *string  `json:"text,omitempty"`
+	Note       *string  `json:"note,omitempty"`
 }
 
 func stampString(t *time.Time) *string {
@@ -349,6 +353,11 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	skips, err := s.store.SkipsForModel(r.Context(), model.ID)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
 
 	var row *domain.Row
 	for i := range snapshot.result.Rows {
@@ -363,13 +372,23 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dimensions := make([]modelDimension, 0, len(snapshot.dimensions))
-	scoredCount := 0
 	dimensionCount := 0
 	for _, d := range snapshot.dimensions {
-		item := modelDimension{ID: d.ID, Name: d.Name, Weight: d.Weight, TextMode: d.TextMode, BaselineMax: d.BaselineMax}
+		item := modelDimension{
+			ID:          d.ID,
+			Name:        d.Name,
+			Weight:      d.Weight,
+			TextMode:    d.TextMode,
+			GroupName:   d.GroupName,
+			BaselineMax: d.BaselineMax,
+		}
 		if baseline, ok := snapshot.result.EffectiveBaselines[d.ID]; ok {
 			value := baseline
 			item.EffectiveBaselineMax = &value
+		}
+		if median, ok := snapshot.result.SkipMedians[d.ID]; ok && !d.TextMode {
+			value := median
+			item.SkipMedian = &value
 		}
 		if d.TextMode {
 			text := texts[d.ID]
@@ -384,9 +403,6 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 		if value, ok := row.DimensionScores[d.ID]; ok {
 			v := value
 			item.Value = &v
-			if d.Weight > 0 {
-				scoredCount++
-			}
 		}
 		if admin {
 			note := notesByDimension[d.ID]
@@ -409,12 +425,11 @@ func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
 		Vendor:         model.Vendor,
 		Hidden:         model.Hidden,
 		Score:          row.Score,
-		Coverage:       row.Coverage,
-		Provisional:    row.Provisional,
 		Rank:           rank,
 		Dimensions:     dimensions,
-		ScoredCount:    scoredCount,
+		ScoredCount:    row.ScoredCount,
 		DimensionCount: dimensionCount,
+		Skips:          skips,
 		UpdatedAt:      model.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if admin {

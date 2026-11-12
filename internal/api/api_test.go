@@ -152,17 +152,19 @@ type rankingOutput struct {
 		ID                   int64    `json:"id"`
 		Weight               int      `json:"weight"`
 		Name                 string   `json:"name"`
+		GroupName            string   `json:"groupName"`
 		BaselineMax          *float64 `json:"baselineMax"`
 		EffectiveBaselineMax *float64 `json:"effectiveBaselineMax"`
+		SkipMedian           *float64 `json:"skipMedian"`
 	} `json:"dimensions"`
 	Models []struct {
 		Slug        string             `json:"slug"`
 		Hidden      bool               `json:"hidden"`
 		Score       *float64           `json:"score"`
-		Coverage    float64            `json:"coverage"`
-		Provisional bool               `json:"provisional"`
 		Rank        *int               `json:"rank"`
+		ScoredCount int                `json:"scoredCount"`
 		Scores      map[string]float64 `json:"scores"`
+		Skips       []int64            `json:"skips"`
 	} `json:"models"`
 }
 
@@ -225,14 +227,14 @@ func TestRankingFlowAndPrivacy(t *testing.T) {
 	if first.Slug != "gpt-5" || first.Score == nil || math.Abs(*first.Score-80) > 1e-9 {
 		t.Fatalf("weighted score = %+v", first)
 	}
-	if first.Coverage != 1 || first.Provisional || first.Rank == nil || *first.Rank != 1 {
-		t.Fatalf("coverage/rank = %+v", first)
+	if first.Rank == nil || *first.Rank != 1 || len(first.Skips) != 0 || first.ScoredCount != 3 {
+		t.Fatalf("rank/skips/scoredCount = %+v", first)
 	}
 	if anonRanking.UpdatedAt == nil {
 		t.Fatal("updatedAt must be set when data exists")
 	}
 	last := anonRanking.Models[1]
-	if last.Slug != "unscored" || last.Score != nil || last.Rank != nil {
+	if last.Slug != "unscored" || last.Score != nil || last.Rank != nil || last.ScoredCount != 0 {
 		t.Fatalf("unscored row = %+v", last)
 	}
 	for _, dimension := range anonRanking.Dimensions {
@@ -363,7 +365,7 @@ func TestZeroWeightRankingAndUpdatedAt(t *testing.T) {
 	if ranking.TotalWeight != 0 || len(ranking.Models) != 1 || len(ranking.Dimensions) != 1 || ranking.Dimensions[0].Weight != 0 {
 		t.Fatalf("zero-weight ranking = %+v", ranking)
 	}
-	if ranking.Models[0].Score != nil || ranking.Models[0].Rank != nil || ranking.Models[0].Coverage != 0 {
+	if ranking.Models[0].Score != nil || ranking.Models[0].Rank != nil {
 		t.Fatalf("zero-weight row = %+v", ranking.Models[0])
 	}
 	if ranking.Models[0].Scores[itoa(dimID)] != 9 {
@@ -1301,4 +1303,153 @@ func TestHiddenModelDrivesPublicBaseline(t *testing.T) {
 	if dimension := public.Dimensions[0]; dimension.EffectiveBaselineMax == nil || *dimension.EffectiveBaselineMax != 8 {
 		t.Fatalf("archived model raised the baseline: %+v", dimension)
 	}
+}
+
+func TestDimensionGroupNameFlow(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+
+	code, body, _ := e.do(t, e.admin, http.MethodPost, "/api/dimensions", map[string]any{
+		"name": "Reasoning", "description": "", "weight": 50, "groupName": "  通用能力  ",
+	}, nil)
+	if code != http.StatusCreated {
+		t.Fatalf("create with group = %d %s", code, body)
+	}
+	var created struct {
+		ID        int64  `json:"id"`
+		GroupName string `json:"groupName"`
+	}
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.GroupName != "通用能力" {
+		t.Fatalf("group name must be trimmed: %q", created.GroupName)
+	}
+
+	path := "/api/dimensions/" + itoa(created.ID)
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"weight": 40}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"groupName":"通用能力"`) {
+		t.Fatalf("omitted group must be kept = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"groupName": nil}, nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"groupName":""`) {
+		t.Fatalf("explicit null must clear = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"groupName": strings.Repeat("组", 21)}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "groupName") {
+		t.Fatalf("over-long group = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPatch, path, map[string]any{"groupName": "通用能力"}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("assign group = %d %s", code, body)
+	}
+
+	dims := e.rankings(t, e.anon).Dimensions
+	if len(dims) != 1 || dims[0].GroupName != "通用能力" {
+		t.Fatalf("rankings group name = %+v", dims)
+	}
+}
+
+func TestScoreSkipFlowAndGuards(t *testing.T) {
+	e := newEnv(t)
+	e.login(t)
+	dimID := createDimension(t, e, "Reasoning", 50)
+	zeroID := createDimension(t, e, "Unused", 0)
+	textID := createTextDimension(t, e, "Notes")
+	createModel(t, e, "m", "Model")
+	skipPath := func(id int64) string { return "/api/models/m/skips/" + itoa(id) }
+
+	code, body, _ := e.do(t, e.admin, http.MethodPut, "/api/models/m/scores/"+itoa(dimID), map[string]any{"value": 7}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("seed score = %d %s", code, body)
+	}
+
+	code, _, _ = e.do(t, e.anon, http.MethodPut, skipPath(dimID), nil, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous skip = %d, want 401", code)
+	}
+	before := e.rankings(t, e.admin)
+	for i := range before.Models {
+		if before.Models[i].Slug == "m" && before.Models[i].ScoredCount != 1 {
+			t.Fatalf("scored count before the skip = %+v", before.Models[i])
+		}
+	}
+	for i := 0; i < 2; i++ {
+		code, body, _ := e.do(t, e.admin, http.MethodPut, skipPath(dimID), nil, nil)
+		if code != http.StatusNoContent {
+			t.Fatalf("skip #%d = %d %s", i+1, code, body)
+		}
+	}
+	// A zero-weight dimension keeps its weight in the denominator, so the state
+	// stays writable exactly like a zero-weight rating.
+	code, body, _ = e.do(t, e.admin, http.MethodPut, skipPath(zeroID), nil, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("zero-weight skip = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, skipPath(textID), nil, nil)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("text dimension skip = %d %s, want 422", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/models/missing/skips/"+itoa(dimID), nil, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown model skip = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/models/m/skips/999999", nil, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown dimension skip = %d %s", code, body)
+	}
+
+	ranking := e.rankings(t, e.admin)
+	for i := range ranking.Models {
+		if ranking.Models[i].Slug == "m" {
+			row := ranking.Models[i]
+			if len(row.Skips) != 2 || !containsID(row.Skips, dimID) || !containsID(row.Skips, zeroID) {
+				t.Fatalf("ranking skips = %+v", row)
+			}
+			// A skipped dimension keeps its stored rating but leaves the count.
+			if row.Scores[""+itoa(dimID)] != 7 || row.ScoredCount != 0 {
+				t.Fatalf("skip must keep the rating and drop the count: %+v", row)
+			}
+		}
+	}
+	for _, dimension := range ranking.Dimensions {
+		if dimension.SkipMedian == nil {
+			t.Fatalf("every numeric dimension must expose skipMedian: %+v", dimension)
+		}
+	}
+	code, detail, _ := e.do(t, e.admin, http.MethodGet, "/api/models/m", nil, nil)
+	if code != http.StatusOK || !strings.Contains(string(detail), `"skips":[`+itoa(dimID)) {
+		t.Fatalf("detail skips = %d %s", code, detail)
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPost, "/api/dimensions/"+itoa(zeroID)+"/archive", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("archive dimension = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodPut, skipPath(zeroID), nil, nil)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("archived dimension skip = %d %s, want 422", code, body)
+	}
+
+	for i := 0; i < 2; i++ {
+		code, body, _ = e.do(t, e.admin, http.MethodDelete, skipPath(dimID), nil, nil)
+		if code != http.StatusNoContent {
+			t.Fatalf("delete skip #%d = %d %s", i+1, code, body)
+		}
+	}
+	ranking = e.rankings(t, e.admin)
+	for i := range ranking.Models {
+		if ranking.Models[i].Slug == "m" && containsID(ranking.Models[i].Skips, dimID) {
+			t.Fatalf("skip survived deletion: %+v", ranking.Models[i])
+		}
+	}
+}
+
+func containsID(values []int64, want int64) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
