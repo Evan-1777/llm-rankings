@@ -33,19 +33,25 @@
 
 .table {
   width: 100%;
-  table-layout: auto;
+  table-layout: fixed;
   min-width: 100%;
 }
 
 .th {
   position: relative;
   height: 58px;
-  padding: 0 12px;
+  padding: 14px 12px 13px;
   border-bottom: 1px solid var(--ink);
-  vertical-align: middle;
+  vertical-align: top;
   text-align: left;
   font-weight: 400;
   white-space: nowrap;
+}
+
+/* Header text starts at the cell's top padding, so a label that wraps to two
+   lines cannot drag the first line off the shared baseline. */
+.headTop {
+  justify-content: flex-start;
 }
 
 .th:first-child {
@@ -69,7 +75,21 @@
 }
 
 .dimCol {
-  width: 92px;
+  width: 94px;
+}
+
+/* Rating headers sit over the value chip: the label lands its right edge on the
+   digits, wraps inside the fixed column instead of widening it, and still fills
+   the cell so the whole header stays clickable. */
+.dimHead {
+  height: auto;
+  min-height: 100%;
+  padding-right: var(--score-pad-x);
+}
+
+.dimHead > :first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Detail entry: an unboxed chevron in the gap between columns, so sorting and
@@ -107,11 +127,20 @@
 }
 
 .staticHead {
-  display: block;
+  display: flex;
+  flex-direction: column;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--ink-3);
+}
+
+/* Same reserved second row as the sort buttons, so the rank label shares their
+   first-line baseline. */
+.staticHead::after {
+  content: "";
+  height: 10px;
+  margin-top: 3px;
 }
 
 .rankShort {
@@ -149,6 +178,13 @@ tbody tr:last-child .td {
   white-space: nowrap;
 }
 
+.rank::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 18px;
+}
+
 .rank {
   display: inline-flex;
   align-items: center;
@@ -165,9 +201,6 @@ tbody tr:last-child .td {
 }
 
 .topRank::before {
-  content: "";
-  width: 3px;
-  height: 18px;
   background: var(--signal);
 }
 
@@ -418,13 +451,9 @@ tbody tr:last-child .td {
     gap: 3px;
   }
 
-  .table {
-    table-layout: fixed;
-  }
-
   .th {
     height: 50px;
-    padding: 0 4px;
+    padding: 10px 4px 11px;
   }
 
   .th:first-child,
@@ -475,8 +504,7 @@ tbody tr:last-child .td {
     font-size: 14px;
   }
 
-  .topRank::before {
-    width: 3px;
+  .rank::before {
     height: 15px;
   }
 

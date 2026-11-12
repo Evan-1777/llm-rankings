@@ -1,7 +1,7 @@
 .score {
   display: inline-block;
   min-width: 58px;
-  padding: 5px 9px;
+  padding: 5px var(--score-pad-x);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--ink);

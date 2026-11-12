@@ -21,12 +21,26 @@
 }
 
 .label {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
   font-size: 11px;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+/* The arrow hangs beside the label instead of inside its box: in flow it would
+   push the label off the column anchor, which is where the values sit. */
+.arrow {
+  position: absolute;
+  left: calc(100% + 5px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.right .arrow {
+  left: auto;
+  right: calc(100% + 5px);
 }
 
 .wrap {
@@ -46,6 +60,7 @@
 }
 
 .sub {
+  min-height: 10px;
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1;

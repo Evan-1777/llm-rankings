@@ -122,17 +122,20 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
   ctx.lineTo(layout.width, headRule);
   ctx.stroke();
 
+  const right = (column: ExportColumn) => column.x + column.width - 8;
   ctx.font = `10px ${TOKENS.mono}`;
   for (const column of layout.columns) {
     ctx.fillStyle = TOKENS.ink;
-    ctx.fillText(column.label, column.x, headRule + 28);
+    // Numeric headers share the right anchor of the values below them.
+    const x =
+      column.kind === "rank" || column.kind === "model" ? column.x : right(column) - ctx.measureText(column.label).width;
+    ctx.fillText(column.label, x, headRule + 28);
   }
   ctx.beginPath();
   ctx.moveTo(0, headRule + 40);
   ctx.lineTo(layout.width, headRule + 40);
   ctx.stroke();
 
-  const right = (column: ExportColumn) => column.x + column.width - 8;
   rows.forEach((model, index) => {
     const y = headRule + 46 + index * layout.rowHeight + 28;
     if (index === 0) {
@@ -170,7 +173,7 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
         if (model.skips.includes(column.dimension.id)) {
           ctx.fillStyle = TOKENS.ink3;
           ctx.font = `11px ${TOKENS.mono}`;
-          ctx.fillText("Skip", column.x, y);
+          ctx.fillText("Skip", right(column) - ctx.measureText("Skip").width, y);
           continue;
         }
         const value = formatDimension(model.scores[String(column.dimension.id)]);

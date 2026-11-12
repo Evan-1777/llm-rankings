@@ -14,6 +14,8 @@
   --score-low-rule: #8f1c14;
   --score-high: #9fcbd2;
   --score-high-rule: #174f5b;
+  /* Horizontal padding of a score chip; board headers align their labels to it. */
+  --score-pad-x: 9px;
   --font-sans: "Helvetica Neue", Helvetica, Arial, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SFMono-Regular", "Cascadia Mono", "Roboto Mono", "Liberation Mono", Menlo, monospace;
   --shell: 1500px;

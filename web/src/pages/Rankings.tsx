@@ -84,7 +84,7 @@ function SortHeader({
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
       className={`${styles.th} ${right ? styles.alignRight : ""} ${className ?? ""}`}
     >
-      <SortButton label={label} active={active} dir={dir} align={right ? "right" : "left"} onClick={onClick} />
+      <SortButton label={label} active={active} dir={dir} align={right ? "right" : "left"} className={styles.headTop} onClick={onClick} />
     </th>
   );
 }
@@ -111,7 +111,15 @@ function ColumnHead({
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
       className={`${styles.th} ${styles.alignRight} ${styles.dimCol}`}
     >
-      <SortButton label={label} sub={sub} active={active} dir={dir} align="right" onClick={onSort} />
+      <SortButton
+        label={label}
+        sub={sub}
+        active={active}
+        dir={dir}
+        align="right"
+        className={`${styles.headTop} ${styles.dimHead}`}
+        onClick={onSort}
+      />
       <button type="button" className={styles.detailBtn} aria-label={`查看 ${label} 明细`} onClick={onDetail}>
         <Icon name="chevron" size={10} />
       </button>
