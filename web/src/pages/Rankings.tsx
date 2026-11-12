@@ -377,7 +377,9 @@ export function Rankings() {
                                 {formatScore(groupValue(column.group, model.scores, baselines, model.skips))}
                               </span>
                             ) : model.skips.includes(column.dimension.id) ? (
-                              <span className={ui.skip}>Skip</span>
+                              <span className={scoreStyles.score}>
+                                <span className={ui.skip}>Skip</span>
+                              </span>
                             ) : (
                               <DimensionScore
                                 value={model.scores[String(column.dimension.id)]}
