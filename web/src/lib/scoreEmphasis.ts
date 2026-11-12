@@ -2,6 +2,8 @@ import { formatScore } from "../domain/ranking.ts";
 
 export interface ScoreRow {
   scores: Record<string, number>;
+  /** Dimensions this model does not use; they stay out of the colour range. */
+  skips?: number[];
 }
 
 export interface ScoreRange {
@@ -46,7 +48,8 @@ export function scoreRange(values: Iterable<number | null | undefined>): ScoreRa
 export function dimensionScoreRanges(rows: readonly ScoreRow[], dimensionIds: readonly number[]): Map<number, ScoreRange> {
   const ranges = new Map<number, ScoreRange>();
   for (const id of dimensionIds) {
-    const range = scoreRange(rows.map((row) => row.scores[String(id)]));
+    const rated = rows.filter((row) => !row.skips?.includes(id));
+    const range = scoreRange(rated.map((row) => row.scores[String(id)]));
     if (range) ranges.set(id, range);
   }
   return ranges;

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -35,7 +36,7 @@ func closeEnough(got, want float64) bool {
 	return math.Abs(got-want) < 1e-9
 }
 
-func TestComputeWeightedAverageAndCoverage(t *testing.T) {
+func TestComputeWeightedAverage(t *testing.T) {
 	// Fixed baselines isolate the weighting rules from the baseline source.
 	in := Input{
 		Dimensions: fixedDims(10, 25, 25, 25, 25),
@@ -47,38 +48,15 @@ func TestComputeWeightedAverageAndCoverage(t *testing.T) {
 		t.Fatalf("totalWeight = %d", result.TotalWeight)
 	}
 	full := result.Rows[0]
-	if full.Slug != "a" || full.Score == nil || !closeEnough(*full.Score, 85) || full.Coverage != 1 || full.Provisional {
+	if full.Slug != "a" || full.Score == nil || !closeEnough(*full.Score, 85) {
 		t.Fatalf("full row wrong: %+v", full)
 	}
 	partial := result.Rows[1]
-	if partial.Score == nil || !closeEnough(*partial.Score, 80) || partial.Coverage != 0.25 || !partial.Provisional {
+	if partial.Score == nil || !closeEnough(*partial.Score, 80) {
 		t.Fatalf("partial row wrong: %+v", partial)
 	}
 	if full.Rank != 1 || partial.Rank != 2 {
 		t.Fatalf("ranks: %d %d", full.Rank, partial.Rank)
-	}
-}
-
-func TestComputeCoverageBoundary(t *testing.T) {
-	build := func(scored int) Result {
-		weights := make([]int, 10)
-		for i := range weights {
-			weights[i] = 100
-		}
-		weights[9] = 100
-		var all []Score
-		for i := 0; i < scored; i++ {
-			all = append(all, Score{ModelID: 1, DimensionID: int64(i + 1), Value: 8})
-		}
-		return Compute(Input{Dimensions: dims(weights...), Models: []Model{{ID: 1, Slug: "a", Name: "A"}}, Scores: all})
-	}
-	eight := build(8)
-	if eight.Rows[0].Coverage != 0.8 || eight.Rows[0].Provisional {
-		t.Fatalf("80%% must not be provisional: %+v", eight.Rows[0])
-	}
-	seven := build(7)
-	if seven.Rows[0].Coverage != 0.7 || !seven.Rows[0].Provisional {
-		t.Fatalf("70%% must be provisional: %+v", seven.Rows[0])
 	}
 }
 
@@ -88,7 +66,7 @@ func TestComputeZeroWeights(t *testing.T) {
 		Models:     []Model{{ID: 1, Slug: "a", Name: "A"}},
 		Scores:     scores(1, 10, 10),
 	})
-	if result.TotalWeight != 0 || result.Rows[0].Score != nil || result.Rows[0].Rank != 0 || result.Rows[0].Coverage != 0 {
+	if result.TotalWeight != 0 || result.Rows[0].Score != nil || result.Rows[0].Rank != 0 {
 		t.Fatalf("zero-weight result must stay empty: %+v", result)
 	}
 }
@@ -115,7 +93,7 @@ func TestComputeUnscoredRowsLast(t *testing.T) {
 	}
 }
 
-func TestComputeTieBreakCoverageThenName(t *testing.T) {
+func TestComputeTieBreakByName(t *testing.T) {
 	result := Compute(Input{
 		Dimensions: dims(50, 50),
 		Models: []Model{
@@ -128,10 +106,7 @@ func TestComputeTieBreakCoverageThenName(t *testing.T) {
 			{ModelID: 2, DimensionID: 1, Value: 8}, {ModelID: 3, DimensionID: 1, Value: 8},
 		},
 	})
-	if result.Rows[0].Slug != "full" {
-		t.Fatalf("higher coverage must win: %+v", result.Rows[0])
-	}
-	if result.Rows[1].Slug != "partial" || result.Rows[2].Slug != "partial-b" {
+	if result.Rows[0].Slug != "partial" || result.Rows[1].Slug != "partial-b" || result.Rows[2].Slug != "full" {
 		t.Fatalf("name tie-break wrong: %+v", result.Rows)
 	}
 }
@@ -180,7 +155,7 @@ func TestComputeIgnoresInvalidInput(t *testing.T) {
 			{ModelID: 2, DimensionID: 1, Value: 10},
 		},
 	})
-	if !closeEnough(*result.Rows[0].Score, 100) || result.Rows[0].Coverage != 0.5 {
+	if !closeEnough(*result.Rows[0].Score, 100) {
 		t.Fatalf("invalid inputs leaked into score: %+v", result.Rows[0])
 	}
 }
@@ -234,8 +209,8 @@ func TestComputeKeepsScoresAndRanksAcrossDisplayOrder(t *testing.T) {
 		if alpha.Score == nil || zeta.Score == nil || !closeEnough(*alpha.Score, 20) || !closeEnough(*zeta.Score, 20) {
 			t.Fatalf("scores changed: %+v %+v", alpha, zeta)
 		}
-		if alpha.Coverage != 1 || zeta.Coverage != 1 || alpha.Rank != 1 || zeta.Rank != 2 {
-			t.Fatalf("coverage/rank changed: %+v %+v", alpha, zeta)
+		if alpha.Rank != 1 || zeta.Rank != 2 {
+			t.Fatalf("rank changed: %+v %+v", alpha, zeta)
 		}
 	}
 	for i := range snapshot {
@@ -312,7 +287,7 @@ func TestComputeZeroWeightDimensionStaysVisibleOnly(t *testing.T) {
 		Scores:     []Score{{ModelID: 1, DimensionID: 1, Value: 9}, {ModelID: 1, DimensionID: 2, Value: 10}},
 	})
 	row := result.Rows[0]
-	if row.Score == nil || !closeEnough(*row.Score, 90) || row.Coverage != 1 || row.Rank != 1 || result.TotalWeight != 100 {
+	if row.Score == nil || !closeEnough(*row.Score, 90) || row.Rank != 1 || result.TotalWeight != 100 {
 		t.Fatalf("zero-weight dimension changed scoring: %+v", row)
 	}
 	if row.DimensionScores[2] != 10 {
@@ -426,5 +401,191 @@ func TestEffectiveBaselinesIgnoresScoresOutsideSnapshot(t *testing.T) {
 	)
 	if !closeEnough(got[1], 8) {
 		t.Fatalf("archived model score must not raise the baseline: %v", got[1])
+	}
+}
+
+/* ---------------------- 维度组与跳过共享夹具（TASK-006） ---------------------- */
+
+// skipFixture is the hand table shared with web/src/domain/ranking.test.ts:
+// dimension 1 Reasoning (w40) and 2 Coding (w20) form the display group "Core",
+// 3 Writing (w30) is "Craft" and 4 Speed (w10) stays ungrouped; groups are a
+// display concern and live only in TS, so Go pins the values it owns while the
+// frontend fixture carries the same ratings, skips and skip medians.
+// Skip medians d1..d4 = 80/60/90/70 give the composites charlie 79 (4 rated),
+// delta 78 (every dimension skipped), alpha 67 (d2 skipped inside Core),
+// bravo 63 (d1 skipped while holding that dimension's highest rating) and the
+// hidden echo 87, whose rating decides d1's percentile.
+func skipFixture() Input {
+	return Input{
+		Dimensions: fixedDims(10, 40, 20, 30, 10),
+		Models: []Model{
+			{ID: 1, Slug: "alpha", Name: "Alpha"},
+			{ID: 2, Slug: "bravo", Name: "Bravo"},
+			{ID: 3, Slug: "charlie", Name: "Charlie"},
+			{ID: 4, Slug: "delta", Name: "Delta"},
+			{ID: 5, Slug: "echo", Name: "Echo", Hidden: true},
+		},
+		Scores: []Score{
+			{ModelID: 1, DimensionID: 1, Value: 6},
+			{ModelID: 1, DimensionID: 2, Value: 5},
+			{ModelID: 1, DimensionID: 3, Value: 9},
+			{ModelID: 1, DimensionID: 4, Value: 4},
+			{ModelID: 2, DimensionID: 1, Value: 10},
+			{ModelID: 2, DimensionID: 2, Value: 4},
+			{ModelID: 2, DimensionID: 3, Value: 6},
+			{ModelID: 2, DimensionID: 4, Value: 5},
+			{ModelID: 3, DimensionID: 1, Value: 9},
+			{ModelID: 3, DimensionID: 2, Value: 6},
+			{ModelID: 3, DimensionID: 3, Value: 8},
+			{ModelID: 3, DimensionID: 4, Value: 7},
+			{ModelID: 4, DimensionID: 1, Value: 7},
+			{ModelID: 4, DimensionID: 2, Value: 3},
+			{ModelID: 4, DimensionID: 3, Value: 5},
+			{ModelID: 4, DimensionID: 4, Value: 2},
+			{ModelID: 5, DimensionID: 1, Value: 8},
+			{ModelID: 5, DimensionID: 2, Value: 8},
+			{ModelID: 5, DimensionID: 3, Value: 10},
+			{ModelID: 5, DimensionID: 4, Value: 9},
+		},
+		Skips: []Skip{
+			{ModelID: 1, DimensionID: 2},
+			{ModelID: 2, DimensionID: 1},
+			{ModelID: 4, DimensionID: 1},
+			{ModelID: 4, DimensionID: 2},
+			{ModelID: 4, DimensionID: 3},
+			{ModelID: 4, DimensionID: 4},
+		},
+	}
+}
+
+func skipRow(t *testing.T, result Result, slug string) Row {
+	t.Helper()
+	for _, row := range result.Rows {
+		if row.Slug == slug {
+			return row
+		}
+	}
+	t.Fatalf("missing row %q", slug)
+	return Row{}
+}
+
+func TestComputeSkipMediansUseUnskippedCandidates(t *testing.T) {
+	result := Compute(skipFixture())
+	want := map[int64]float64{1: 80, 2: 60, 3: 90, 4: 70}
+	for id, value := range want {
+		if !closeEnough(result.SkipMedians[id], value) {
+			t.Fatalf("skip median of dimension %d = %v, want %v", id, result.SkipMedians[id], value)
+		}
+	}
+
+	// bravo holds dimension 1's highest rating (10) and skips it; the rating
+	// stays out of the candidates, so the percentile stays 80 instead of 90.
+	rated := skipFixture()
+	kept := make([]Skip, 0, len(rated.Skips))
+	for _, skip := range rated.Skips {
+		if skip.ModelID == 2 && skip.DimensionID == 1 {
+			continue
+		}
+		kept = append(kept, skip)
+	}
+	rated.Skips = kept
+	if got := Compute(rated).SkipMedians[1]; !closeEnough(got, 90) {
+		t.Fatalf("skipped rating leaked into the candidates: d1 = %v, want 90", got)
+	}
+
+	// The hidden model decides the percentile: without echo d1 picks 90.
+	visible := skipFixture()
+	visible.Models = visible.Models[:4]
+	scores := make([]Score, 0, len(visible.Scores))
+	for _, score := range visible.Scores {
+		if score.ModelID != 5 {
+			scores = append(scores, score)
+		}
+	}
+	visible.Scores = scores
+	if got := Compute(visible).SkipMedians[1]; !closeEnough(got, 90) {
+		t.Fatalf("hidden model must set the median: d1 = %v, want 90", got)
+	}
+}
+
+func TestComputeSkipReplacesRatingAndKeepsWeight(t *testing.T) {
+	rated := skipFixture()
+	rated.Skips = nil
+	plain := Compute(rated)
+	skipped := Compute(skipFixture())
+
+	// alpha rates d2 at 5 (50%) and skips it, taking the 60% median 60 instead:
+	// 65 -> 67 while the weight denominator stays untouched.
+	if got := skipRow(t, plain, "alpha"); got.Score == nil || !closeEnough(*got.Score, 65) {
+		t.Fatalf("unskipped alpha = %+v, want 65", got)
+	}
+	if got := skipRow(t, skipped, "alpha"); got.Score == nil || !closeEnough(*got.Score, 67) {
+		t.Fatalf("skipped alpha = %+v, want 67", got)
+	}
+	if skipped.TotalWeight != 100 {
+		t.Fatalf("skip must not shrink the weight denominator: %d", skipped.TotalWeight)
+	}
+}
+
+func TestComputeSkipFixtureOrdering(t *testing.T) {
+	result := Compute(skipFixture())
+	want := []struct {
+		slug  string
+		score float64
+	}{
+		{"charlie", 79}, // every dimension rated
+		{"delta", 78},   // every dimension skipped, still scored from the medians
+		{"alpha", 67},   // d2 skipped inside the Core group
+		{"bravo", 63},   // d1 skipped while holding its highest rating
+	}
+	for i, expected := range want {
+		row := result.Rows[i]
+		if row.Slug != expected.slug || row.Rank != i+1 || row.Score == nil || !closeEnough(*row.Score, expected.score) {
+			t.Fatalf("row %d = %+v, want %s at %.2f", i, row, expected.slug, expected.score)
+		}
+	}
+	hidden := result.Rows[4]
+	if !hidden.Hidden || hidden.Slug != "echo" || hidden.Rank != 0 || hidden.Score == nil || !closeEnough(*hidden.Score, 87) {
+		t.Fatalf("hidden row = %+v", hidden)
+	}
+}
+
+func TestComputeScoredCountDropsSkippedDimensions(t *testing.T) {
+	result := Compute(skipFixture())
+	want := map[string]int{"alpha": 3, "bravo": 3, "charlie": 4, "delta": 0, "echo": 4}
+	for slug, count := range want {
+		if got := skipRow(t, result, slug).ScoredCount; got != count {
+			t.Fatalf("%s scored count = %d, want %d", slug, got, count)
+		}
+	}
+}
+
+func TestSkipMedianPicksTheSixtiethPercentileIndex(t *testing.T) {
+	// floor(n*0.6) selects index 0/1/3/5 for 1/2/5/9 candidates; a fixed
+	// baseline of 100 keeps each converted value equal to its rating.
+	for _, tc := range []struct{ candidates, index int }{{1, 0}, {2, 1}, {5, 3}, {9, 5}} {
+		models := make([]Model, 0, tc.candidates)
+		all := make([]Score, 0, tc.candidates)
+		for i := 1; i <= tc.candidates; i++ {
+			models = append(models, Model{ID: int64(i), Slug: fmt.Sprintf("m%d", i), Name: "M"})
+			all = append(all, Score{ModelID: int64(i), DimensionID: 1, Value: float64(i)})
+		}
+		result := Compute(Input{Dimensions: fixedDims(100, 100), Models: models, Scores: all})
+		if got, want := result.SkipMedians[1], float64(tc.index+1); !closeEnough(got, want) {
+			t.Fatalf("%d candidates: median = %v, want %v (index %d)", tc.candidates, got, want, tc.index)
+		}
+	}
+
+	// Without candidates the imputed value is 0 and the weight still counts.
+	empty := Compute(Input{
+		Dimensions: fixedDims(100, 100),
+		Models:     []Model{{ID: 1, Slug: "a", Name: "A"}},
+		Skips:      []Skip{{ModelID: 1, DimensionID: 1}},
+	})
+	if empty.SkipMedians[1] != 0 {
+		t.Fatalf("no candidates must impute 0, got %v", empty.SkipMedians[1])
+	}
+	if row := empty.Rows[0]; row.Score == nil || *row.Score != 0 || row.ScoredCount != 0 {
+		t.Fatalf("skip without candidates = %+v", row)
 	}
 }

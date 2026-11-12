@@ -126,8 +126,12 @@
   min-width: 0;
 }
 
-.coverageRow {
-  margin-top: 10px;
+.tableFoot {
+  padding-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
 }
 
 .rowHead {

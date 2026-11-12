@@ -26,6 +26,14 @@ const icons = {
   arrowUp: <path d="M8 13V3M4 7l4-4 4 4" />,
   arrowDown: <path d="M8 3v10M4 9l4 4 4-4" />,
   arrowRight: <path d="M2.5 8h11M9 3.5 13.5 8 9 12.5" />,
+  chevron: <path d="m6 3.5 4.5 4.5L6 12.5" />,
+  skip: (
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="m4.2 11.8 7.6-7.6" />
+    </>
+  ),
+  skipOff: <circle cx="8" cy="8" r="5.6" />,
   arrowLeft: <path d="M13.5 8h-11M7 3.5 2.5 8 7 12.5" />,
   check: <path d="m2.5 8.5 3.5 3 7.5-7.5" />,
   settings: (

@@ -9,7 +9,7 @@ import { PageHeading } from "../components/PageHeading";
 import { ScoreDialog } from "../components/ScoreDialog";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
-import { barWidth, dimensionMax, dimensionRanks, formatPercent } from "../domain/ranking";
+import { barWidth, dimensionMax, dimensionRanks } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange, strengthPercentile } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
@@ -25,9 +25,9 @@ function rankingModelFromDetail(detail: ModelDetailData): RankingModel {
     vendor: detail.vendor,
     hidden: detail.hidden,
     score: detail.score,
-    coverage: detail.coverage,
-    provisional: detail.provisional,
     rank: detail.rank,
+    scoredCount: detail.scoredCount,
+    skips: detail.skips,
     scores: Object.fromEntries(
       detail.dimensions
         .filter((dimension) => !dimension.textMode && dimension.value != null)
@@ -129,13 +129,6 @@ export function ModelDetail() {
               <b>{rankLabel(detail.rank)}</b>
             </div>
             <div>
-              <span>覆盖率</span>
-              <b>
-                {formatPercent(detail.coverage)}
-                {detail.provisional ? <span className={ui.tag}>暂定</span> : null}
-              </b>
-            </div>
-            <div>
               <span>已评分维度</span>
               <b>
                 {detail.scoredCount} / {detail.dimensionCount}
@@ -183,6 +176,7 @@ export function ModelDetail() {
                 ? "最高分占比 / 100% = 同项最高分 / 相对条越强越长"
                 : "相对强度 / 100% = 最强，1% = 最弱 / 相对条越强越长"
               : "相对条按最高分归一 / 名次按同维度已评分模型"}
+            {" / 跳过维度按 60% 中位分计入总分"}
           </span>
           {dimensionScoreEmphasis ? (
             <span className={ui.legend}>
@@ -236,15 +230,20 @@ export function ModelDetail() {
                         : null;
                     const ranked = ranksByDimension.get(dimension.id);
                     const rank = ranked?.get(detail.slug) ?? null;
+                    const skipped = detail.skips.includes(dimension.id);
                     return (
                       <tr key={dimension.id}>
                         <td className={styles.dimName}>{dimension.name}</td>
                         <td className={styles.weight}>{dimension.weight}</td>
                         <td className={`${styles.score} ${styles.num}`}>
-                          <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} max={max} />
+                          {skipped ? (
+                            <span className={ui.skip}>Skip</span>
+                          ) : (
+                            <DimensionScore value={dimension.value} range={scoreRanges.get(dimension.id)} max={max} />
+                          )}
                         </td>
                         <td className={`${styles.rankCell} ${styles.num}`}>
-                          {rank == null ? (
+                          {rank == null || skipped ? (
                             <span className={styles.rankMissing}>—</span>
                           ) : (
                             <span className={styles.rank}>

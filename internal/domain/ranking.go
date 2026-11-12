@@ -33,20 +33,30 @@ type Score struct {
 	Value       float64
 }
 
+// Skip marks a dimension a model does not use. The composite score imputes the
+// dimension's 60th-percentile value instead of a stored rating.
+type Skip struct {
+	ModelID     int64
+	DimensionID int64
+}
+
 // Input is the complete snapshot used for one ranking calculation.
 type Input struct {
 	Dimensions []Dimension
 	Models     []Model
 	Scores     []Score
+	Skips      []Skip
 }
 
-// Row is one model's computed result.
+// Row is one model's computed result. DimensionScores keeps every stored
+// rating, including on skipped dimensions, so the editor can restore a value
+// after a skip is cleared; ScoredCount only counts the dimensions that carry
+// weight and are actually rated.
 type Row struct {
 	Model
 	Score           *float64
-	Coverage        float64
-	Provisional     bool
 	Rank            int
+	ScoredCount     int
 	DimensionScores map[int64]float64
 }
 
@@ -58,15 +68,17 @@ type Result struct {
 	// value used for conversion. Dimensions without a fixed baseline and
 	// without any valid score are absent.
 	EffectiveBaselines map[int64]float64
+	// SkipMedians maps every numeric dimension to the converted value a skipped
+	// dimension contributes to a composite score; 0 when it has no candidate.
+	SkipMedians map[int64]float64
 }
-
-// ProvisionalThreshold is the coverage below which a ranking is provisional.
-const ProvisionalThreshold = 0.8
 
 // Compute ranks models with the single global set of dimension weights.
 // Dimensions with weight 0 keep their stored values in DimensionScores but stay
-// out of the composite score, coverage and ordering. Hidden models are scored
-// the same way, sorted after every visible model and never receive a rank.
+// out of the composite score and ordering. Skipped dimensions keep their weight
+// in the composite denominator and contribute the imputed median. Hidden models
+// are scored the same way, sorted after every visible model and never receive a
+// rank.
 func Compute(in Input) Result {
 	weights := make(map[int64]int, len(in.Dimensions))
 	known := make(map[int64]bool, len(in.Dimensions))
@@ -80,6 +92,8 @@ func Compute(in Input) Result {
 	}
 
 	baselines := EffectiveBaselines(in.Dimensions, in.Models, in.Scores)
+	skips := skipIndex(in.Skips)
+	medians := skipMedians(in.Dimensions, in.Models, in.Scores, skips, baselines)
 
 	scoresByModel := make(map[int64]map[int64]float64, len(in.Models))
 	for _, sc := range in.Scores {
@@ -106,20 +120,30 @@ func Compute(in Input) Result {
 		weightedSum := 0.0
 		for _, dimension := range ordered {
 			value, scored := scoresByModel[m.ID][dimension.ID]
-			if !scored {
+			skipped := skips[m.ID][dimension.ID]
+			if !scored && !skipped {
 				continue
 			}
-			row.DimensionScores[dimension.ID] = value
+			if scored {
+				row.DimensionScores[dimension.ID] = value
+			}
 			weight, weighted := weights[dimension.ID]
-			if !weighted || weight == 0 {
+			if !weighted {
 				continue
 			}
 			scoredWeight += weight
-			// Convert to the percentage scale first; a missing or zero baseline
-			// contributes 0, mirroring the frontend formula.
+			if scored && !skipped {
+				row.ScoredCount++
+			}
+			// Convert to the percentage scale first; a skipped dimension takes
+			// the imputed median, a missing or zero baseline contributes 0,
+			// mirroring the frontend formula.
 			converted := 0.0
-			if baseline := baselines[dimension.ID]; baseline > 0 {
-				converted = value / baseline * 100
+			switch {
+			case skipped:
+				converted = medians[dimension.ID]
+			case baselines[dimension.ID] > 0:
+				converted = value / baselines[dimension.ID] * 100
 			}
 			// Normalize before multiplying so finite extreme values cannot overflow.
 			weightedSum += (float64(weight) / float64(totalWeight)) * converted
@@ -127,8 +151,6 @@ func Compute(in Input) Result {
 		if totalWeight > 0 && scoredWeight > 0 {
 			score := weightedSum / (float64(scoredWeight) / float64(totalWeight))
 			row.Score = &score
-			row.Coverage = float64(scoredWeight) / float64(totalWeight)
-			row.Provisional = row.Coverage < ProvisionalThreshold
 		}
 		if m.Hidden {
 			hidden = append(hidden, row)
@@ -150,7 +172,57 @@ func Compute(in Input) Result {
 		rows[i].Rank = rank
 	}
 
-	return Result{Rows: rows, TotalWeight: totalWeight, EffectiveBaselines: baselines}
+	return Result{Rows: rows, TotalWeight: totalWeight, EffectiveBaselines: baselines, SkipMedians: medians}
+}
+
+// skipMedians resolves the value a skipped dimension contributes to a composite
+// score: the 60th percentile (index floor(n*0.6)) of the converted ratings from
+// every snapshot model that did not skip the dimension. A dimension without
+// candidates imputes 0 and keeps its weight.
+func skipMedians(dimensions []Dimension, models []Model, scores []Score, skips map[int64]map[int64]bool, baselines map[int64]float64) map[int64]float64 {
+	inSnapshot := make(map[int64]bool, len(models))
+	for _, m := range models {
+		inSnapshot[m.ID] = true
+	}
+	ratings := make(map[int64][]float64, len(dimensions))
+	for _, sc := range scores {
+		if !inSnapshot[sc.ModelID] || skips[sc.ModelID][sc.DimensionID] || !validScore(sc.Value) {
+			continue
+		}
+		ratings[sc.DimensionID] = append(ratings[sc.DimensionID], sc.Value)
+	}
+
+	out := make(map[int64]float64, len(dimensions))
+	for _, d := range dimensions {
+		converted := make([]float64, 0, len(ratings[d.ID]))
+		baseline := baselines[d.ID]
+		for _, value := range ratings[d.ID] {
+			if baseline > 0 {
+				converted = append(converted, value/baseline*100)
+			} else {
+				converted = append(converted, 0)
+			}
+		}
+		if len(converted) == 0 {
+			out[d.ID] = 0
+			continue
+		}
+		sort.Float64s(converted)
+		out[d.ID] = converted[len(converted)*6/10]
+	}
+	return out
+}
+
+// skipIndex groups skips by model for the composite loop.
+func skipIndex(skips []Skip) map[int64]map[int64]bool {
+	out := make(map[int64]map[int64]bool, len(skips))
+	for _, skip := range skips {
+		if out[skip.ModelID] == nil {
+			out[skip.ModelID] = make(map[int64]bool)
+		}
+		out[skip.ModelID][skip.DimensionID] = true
+	}
+	return out
 }
 
 // EffectiveBaselines resolves the baseline of every dimension: the configured
@@ -206,13 +278,8 @@ func sortRows(rows []Row) {
 		if (a.Score == nil) != (b.Score == nil) {
 			return a.Score != nil
 		}
-		if a.Score != nil {
-			if *a.Score != *b.Score {
-				return *a.Score > *b.Score
-			}
-			if a.Coverage != b.Coverage {
-				return a.Coverage > b.Coverage
-			}
+		if a.Score != nil && *a.Score != *b.Score {
+			return *a.Score > *b.Score
 		}
 		an, bn := strings.ToLower(a.Name), strings.ToLower(b.Name)
 		if an != bn {

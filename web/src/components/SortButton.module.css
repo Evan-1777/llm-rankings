@@ -45,12 +45,19 @@
   color: var(--signal);
 }
 
-.weight {
+.sub {
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1;
   letter-spacing: 0.04em;
   color: var(--ink-3);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: none;
 }
 
 @media (max-width: 760px) {

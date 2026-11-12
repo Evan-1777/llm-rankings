@@ -11,15 +11,18 @@ import styles from "./ModelDialog.module.css";
 interface DimensionDialogProps {
   open: boolean;
   dimension?: Dimension | null;
+  /** Existing group names offered as suggestions. */
+  groups: string[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function DimensionDialog({ open, dimension = null, onClose, onSaved }: DimensionDialogProps) {
+export function DimensionDialog({ open, dimension = null, groups, onClose, onSaved }: DimensionDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [weight, setWeight] = useState("0");
   const [baseline, setBaseline] = useState("");
+  const [group, setGroup] = useState("");
   const [excluded, setExcluded] = useState(false);
   const [textMode, setTextMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -33,6 +36,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     setDescription(dimension?.description ?? "");
     setWeight(dimension ? String(dimension.weight) : "50");
     setBaseline(dimension?.baselineMax == null ? "" : String(dimension.baselineMax));
+    setGroup(dimension?.groupName ?? "");
     setExcluded(dimension ? dimension.weight === 0 : false);
     setTextMode(dimension?.textMode ?? false);
     setErrors({});
@@ -43,6 +47,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     const next: Record<string, string> = {};
     if (name.trim().length < 1 || name.trim().length > 40) next.name = "名称需为 1–40 个字符";
     if (description.length > 500) next.description = "说明不能超过 500 个字符";
+    if (group.trim().length > 20) next.groupName = "组名不能超过 20 个字符";
     if (!excluded) {
       const numeric = Number(weight);
       if (!Number.isInteger(numeric) || numeric < 1 || numeric > 100) next.weight = "参与评分时权重需为 1–100 的整数";
@@ -67,6 +72,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
       weight: excluded ? 0 : Number(weight),
       textMode: excluded && textMode,
       baselineMax: textMode || baseline.trim() === "" ? null : Number(baseline),
+      groupName: group.trim() === "" ? null : group.trim(),
     };
     try {
       if (dimension) {
@@ -86,6 +92,10 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
     }
   };
 
+  // Grouping is a numeric, weight-carrying concept: text and excluded
+  // dimensions keep whatever group name they already store.
+  const groupable = !excluded && !textMode;
+
   return (
     <Dialog open={open} width="model" labelledBy="dimension-title" onRequestClose={onClose}>
       <DialogHeader
@@ -95,6 +105,11 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
         onClose={onClose}
       />
       <form onSubmit={(event) => void submit(event)}>
+        <datalist id="dimension-group-options">
+          {groups.map((group) => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
         <div className={ui.dialogBody}>
           <div className={styles.form}>
             <TextField
@@ -115,6 +130,18 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
               error={errors.description}
               onChange={(event) => setDescription(event.target.value)}
             />
+            {groupable ? (
+              <TextField
+                id="dimension-group"
+                label="所属分组"
+                value={group}
+                maxLength={20}
+                list="dimension-group-options"
+                error={errors.groupName}
+                hint="同名维度在榜单合并为一列；留空不分组。"
+                onChange={(event) => setGroup(event.target.value)}
+              />
+            ) : null}
             <label className={ui.checkboxRow}>
               <input
                 type="checkbox"
@@ -133,7 +160,7 @@ export function DimensionDialog({ open, dimension = null, onClose, onSaved }: Di
               />
               不纳入评分
             </label>
-            <p className={ui.hint}>数值仍显示在排行与详情，但不计入综合分与覆盖率。</p>
+            <p className={ui.hint}>数值仍显示在排行与详情，但不计入综合分。</p>
             <TextField
               id="dimension-weight"
               label="权重"

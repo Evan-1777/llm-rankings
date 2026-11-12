@@ -4,7 +4,6 @@ import { api, errorMessage } from "../api/client";
 import type { RankingModel } from "../api/types";
 import { Button } from "../components/Button";
 import { useConfirm } from "../components/Confirm";
-import { Coverage } from "../components/Coverage";
 import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
 import { PageHeading } from "../components/PageHeading";
@@ -33,7 +32,7 @@ interface SortState {
   dir: SortDir;
 }
 
-const INITIAL_SORT: SortState = { key: "coverage", dir: "asc" };
+const INITIAL_SORT: SortState = { key: "scored", dir: "asc" };
 
 function nextDirection(key: string, current: SortState): SortDir {
   if (current.key === key) return current.dir === "asc" ? "desc" : "asc";
@@ -69,12 +68,14 @@ export function Workbench() {
 
   const dimensions = data?.dimensions ?? [];
   const models = data?.models ?? [];
+  const weightDimensions = useMemo(() => dimensions.filter((dimension) => dimension.weight > 0), [dimensions]);
+  // The server owns the "rated" count so the board, the workbench and the
+  // score dialog never drift apart on skipped dimensions.
   const rows = useMemo(() => sortWorkbenchRows(models, sort.key, sort.dir), [models, sort.key, sort.dir]);
   const plan = useMemo(() => collectQuickEdit(draft, baseline, dimensions), [draft, baseline, dimensions]);
 
   const scored = models.filter((model) => model.score != null).length;
   const canQuickEdit = Boolean(data && models.length > 0 && dimensions.length > 0);
-  const weightDimensions = dimensions.filter((dimension) => dimension.weight > 0);
   const dirty = editing && plan.pendingCount > 0;
 
   const refreshAll = () => {
@@ -136,12 +137,13 @@ export function Workbench() {
     try {
       for (const change of plan.changes) {
         if (!aliveRef.current) break;
-        if (change.value == null) {
-          await api.deleteScore(change.slug, change.dimensionId);
-        } else {
-          await api.putScore(change.slug, change.dimensionId, change.value);
+        for (const action of change.actions) {
+          if (action.kind === "score") await api.putScore(change.slug, change.dimensionId, action.value);
+          else if (action.kind === "deleteScore") await api.deleteScore(change.slug, change.dimensionId);
+          else if (action.kind === "skip") await api.putSkip(change.slug, change.dimensionId);
+          else await api.deleteSkip(change.slug, change.dimensionId);
         }
-        nextBaseline = commitQuickEdit(nextBaseline, change.slug, change.dimensionId, change.value);
+        nextBaseline = commitQuickEdit(nextBaseline, change.slug, change.dimensionId, change.value, change.skip);
         applied += 1;
       }
       if (!aliveRef.current) return;
@@ -238,7 +240,7 @@ export function Workbench() {
             ))}
             <col className={styles.scoreCol} />
             <col className={styles.rankCol} />
-            <col className={styles.coverageCol} />
+            <col className={styles.scoredCol} />
             {!editing ? <col className={styles.actionCol} /> : null}
           </colgroup>
           <thead>
@@ -257,7 +259,7 @@ export function Workbench() {
                   >
                     <SortButton
                       label={dimension.name}
-                      weight={dimension.weight}
+                      sub={`权重 ${dimension.weight}`}
                       active={sort.key === key}
                       dir={sort.dir}
                       align="right"
@@ -273,8 +275,8 @@ export function Workbench() {
               <th scope="col" aria-sort={sort.key === "rank" ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={styles.th}>
                 <SortButton label="排名" active={sort.key === "rank"} dir={sort.dir} onClick={() => updateSort("rank")} />
               </th>
-              <th scope="col" aria-sort={sort.key === "coverage" ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={styles.th}>
-                <SortButton label="覆盖率" active={sort.key === "coverage"} dir={sort.dir} onClick={() => updateSort("coverage")} />
+              <th scope="col" aria-sort={sort.key === "scored" ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={styles.th}>
+                <SortButton label="已评分" active={sort.key === "scored"} dir={sort.dir} onClick={() => updateSort("scored")} />
               </th>
               {!editing ? (
                 <th scope="col" className={`${styles.th} ${styles.actionHead}`}>
@@ -285,10 +287,6 @@ export function Workbench() {
           </thead>
           <tbody>
             {rows.map((model) => {
-              const ratedCount = weightDimensions.reduce(
-                (count, dimension) => count + (model.scores[String(dimension.id)] != null ? 1 : 0),
-                0,
-              );
               return (
                 <tr key={model.slug} className={`${styles.row} ${model.hidden ? styles.hiddenRow : ""}`}>
                   <td className={`${styles.td} ${styles.modelCell}`}>
@@ -305,7 +303,10 @@ export function Workbench() {
                       : undefined;
                     const parsed = editing ? parseScoreInput(raw) : null;
                     const base = baseline[model.slug]?.[key] ?? null;
-                    const changed = Boolean(parsed && !parsed.error && parsed.value !== base);
+                    const skipped = editing ? Boolean(parsed?.skip) : model.skips.includes(dimension.id);
+                    const changed = editing
+                      ? Boolean(parsed && !parsed.error && (parsed.skip !== Boolean(base?.skip) || parsed.value !== (base?.value ?? null)))
+                      : false;
                     return (
                       <td
                         key={dimension.id}
@@ -315,7 +316,7 @@ export function Workbench() {
                           <input
                             type="text"
                             inputMode="decimal"
-                            className={`${styles.cellInput} ${changed ? styles.inputDirty : ""} ${cellError ? styles.inputError : ""}`}
+                            className={`${styles.cellInput} ${changed ? styles.inputDirty : ""} ${cellError ? styles.inputError : ""} ${skipped ? styles.inputSkipped : ""}`}
                             value={raw}
                             placeholder="—"
                             disabled={saving}
@@ -325,6 +326,8 @@ export function Workbench() {
                             aria-invalid={Boolean(cellError)}
                             onChange={(event) => updateCell(model.slug, dimension.id, event.target.value)}
                           />
+                        ) : skipped ? (
+                          <span className={ui.skip}>Skip</span>
                         ) : (
                           <span className={styles.dimValue}>{formatDimension(model.scores[key])}</span>
                         )}
@@ -336,13 +339,9 @@ export function Workbench() {
                   </td>
                   <td className={`${styles.td} ${styles.rankValue} ${editing ? styles.frozen : ""}`}>{rankLabel(model.rank)}</td>
                   <td className={`${styles.td} ${editing ? styles.frozen : ""}`}>
-                    <Coverage
-                      coverage={model.coverage}
-                      provisional={model.provisional}
-                      scored={ratedCount}
-                      total={weightDimensions.length}
-                      muted={model.hidden}
-                    />
+                    <span className={styles.scoredValue}>
+                      {model.scoredCount} <span className={styles.scoredTotal}>/ {weightDimensions.length}</span>
+                    </span>
                   </td>
                   {!editing ? (
                     <td className={`${styles.td} ${styles.actionCell}`}>

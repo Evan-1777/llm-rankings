@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, errorMessage } from "../api/client";
 import type { RankingDimension, RankingModel } from "../api/types";
 import { Button, IconButton } from "../components/Button";
-import { Coverage } from "../components/Coverage";
+import { DetailDrawer, type DetailTarget } from "../components/DetailDrawer";
 import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
@@ -14,8 +14,21 @@ import { SortButton } from "../components/SortButton";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
-import { dimensionKey, dimensionMax, sortRows, type SortDir } from "../domain/ranking";
+import {
+  boardColumns,
+  dimensionKey,
+  dimensionMax,
+  formatScore,
+  groupKey,
+  groupValue,
+  snapshotBaselines,
+  sortRows,
+  type BoardColumns,
+  type DimensionGroup,
+  type SortDir,
+} from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
+import { downloadRankingsImage } from "../lib/exportImage";
 import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -28,14 +41,15 @@ interface SortState {
   dir: SortDir;
 }
 
-function isSortKey(key: string, dimensions: RankingDimension[]): boolean {
-  if (key === "model" || key === "score" || key === "coverage") return true;
-  return key.startsWith("dim-") && dimensions.some((dimension) => dimensionKey(dimension.id) === key);
+function isSortKey(key: string, columns: BoardColumns<RankingDimension>): boolean {
+  if (key === "model" || key === "score") return true;
+  if (key.startsWith("group-")) return columns.groups.some((group) => groupKey(group.name) === key);
+  return key.startsWith("dim-") && columns.ungrouped.some((dimension) => dimensionKey(dimension.id) === key);
 }
 
-function resolveSort(params: URLSearchParams, dimensions: RankingDimension[]): SortState {
+function resolveSort(params: URLSearchParams, columns: BoardColumns<RankingDimension>): SortState {
   const rawKey = params.get("sort") ?? "score";
-  const key = isSortKey(rawKey, dimensions) ? rawKey : "score";
+  const key = isSortKey(rawKey, columns) ? rawKey : "score";
   const rawDir = params.get("dir");
   const dir: SortDir = rawDir === "asc" || rawDir === "desc" ? rawDir : key === "model" ? "asc" : "desc";
   return { key, dir };
@@ -50,7 +64,6 @@ function resolveCompare(params: URLSearchParams, models: RankingModel[]): string
 
 function SortHeader({
   label,
-  weight,
   right = false,
   active,
   dir,
@@ -58,7 +71,6 @@ function SortHeader({
   className,
 }: {
   label: string;
-  weight?: number;
   right?: boolean;
   active: boolean;
   dir: SortDir;
@@ -71,7 +83,7 @@ function SortHeader({
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
       className={`${styles.th} ${right ? styles.alignRight : ""} ${className ?? ""}`}
     >
-      <SortButton label={label} weight={weight} active={active} dir={dir} align={right ? "right" : "left"} onClick={onClick} />
+      <SortButton label={label} active={active} dir={dir} align={right ? "right" : "left"} onClick={onClick} />
     </th>
   );
 }
@@ -87,14 +99,23 @@ export function Rankings() {
   const [params, setParams] = useSearchParams();
   const [scoreTarget, setScoreTarget] = useState<RankingModel | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [detail, setDetail] = useState<DetailTarget | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const dimensions = data?.dimensions ?? [];
   const models = data?.models ?? [];
   const totalWeight = data?.totalWeight ?? 0;
   const scoredCount = models.filter((model) => model.score != null).length;
-  const sort = resolveSort(params, dimensions);
+  const columns = useMemo(() => boardColumns(dimensions), [dimensions]);
+  // The board converts with the snapshot's effective baselines, so hidden
+  // models that hold a maximum keep the visible group values in step.
+  const baselines = useMemo(() => snapshotBaselines(dimensions), [dimensions]);
+  const sort = resolveSort(params, columns);
   const compareSlugs = resolveCompare(params, models);
-  const sortedModels = useMemo(() => sortRows(models, sort.key, sort.dir), [models, sort.key, sort.dir]);
+  const sortedModels = useMemo(
+    () => sortRows(models, sort.key, sort.dir, { groups: columns.groups, baselines }),
+    [models, sort.key, sort.dir, columns, baselines],
+  );
   const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
   const dimensionMaxima = useMemo(
     () => new Map(dimensions.map((dimension) => [dimension.id, dimensionMax(models, dimension.id)])),
@@ -109,6 +130,26 @@ export function Rankings() {
     next.set("sort", key);
     next.set("dir", nextDir);
     setParams(next);
+  };
+
+  const openGroupDetail = (group: DimensionGroup<RankingDimension>) => {
+    setDetail({
+      kicker: "维度组 / 组内明细",
+      title: group.name,
+      color: group.color,
+      meta: `${group.dimensions.map((dimension) => `${dimension.name} · 权重 ${dimension.weight}`).join("   /   ")}   ·   组值按综合分公式的组内部分计算`,
+      dimensions: group.dimensions,
+    });
+  };
+
+  const openDimensionDetail = (dimension: RankingDimension) => {
+    setDetail({
+      kicker: "维度 / 明细",
+      title: dimension.name,
+      color: null,
+      meta: `权重 ${dimension.weight} · 名次按同维度已评分模型`,
+      dimensions: [dimension],
+    });
   };
 
   const toggleCompare = (slug: string) => {
@@ -134,6 +175,19 @@ export function Rankings() {
   };
 
   const openSettings = () => navigate("/settings?tab=dimensions");
+
+  const exportImage = async () => {
+    if (!data || exporting) return;
+    setExporting(true);
+    try {
+      await downloadRankingsImage(data);
+      toast("图片已导出");
+    } catch (caught) {
+      toast(errorMessage(caught), "error");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const compositeLabel = displayScoreLabel(displayMode, "综合分", "综合强度", "综合占比");
   const percentageLabel = displayScoreLabel(displayMode, "加权平均", "相对强度", "最高分占比");
@@ -229,19 +283,63 @@ export function Rankings() {
                     dir={sort.dir}
                     onClick={() => updateSort("score")}
                   />
-                  <SortHeader label="覆盖率" className={styles.coverageCol} active={sort.key === "coverage"} dir={sort.dir} onClick={() => updateSort("coverage")} />
-                  {dimensions.map((dimension) => (
-                    <SortHeader
-                      key={dimension.id}
-                      label={dimension.name}
-                      weight={dimension.weight}
-                      className={styles.dimCol}
-                      right
-                      active={sort.key === dimensionKey(dimension.id)}
-                      dir={sort.dir}
-                      onClick={() => updateSort(dimensionKey(dimension.id))}
-                    />
-                  ))}
+                  {columns.groups.map((group) => {
+                    const key = groupKey(group.name);
+                    return (
+                      <th
+                        key={group.name}
+                        scope="col"
+                        aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+                        className={`${styles.th} ${styles.alignRight} ${styles.groupCol}`}
+                      >
+                        <SortButton
+                          label={group.name}
+                          dot={group.color}
+                          sub={`${group.dimensions.length} 项 · 权重 ${group.weight}`}
+                          active={sort.key === key}
+                          dir={sort.dir}
+                          align="right"
+                          onClick={() => updateSort(key)}
+                        />
+                        <button
+                          type="button"
+                          className={styles.detailBtn}
+                          aria-label={`查看 ${group.name} 组明细`}
+                          onClick={() => openGroupDetail(group)}
+                        >
+                          <Icon name="chevron" size={10} />
+                        </button>
+                      </th>
+                    );
+                  })}
+                  {columns.ungrouped.map((dimension) => {
+                    const key = dimensionKey(dimension.id);
+                    return (
+                      <th
+                        key={dimension.id}
+                        scope="col"
+                        aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+                        className={`${styles.th} ${styles.alignRight} ${styles.dimCol}`}
+                      >
+                        <SortButton
+                          label={dimension.name}
+                          sub={`权重 ${dimension.weight}`}
+                          active={sort.key === key}
+                          dir={sort.dir}
+                          align="right"
+                          onClick={() => updateSort(key)}
+                        />
+                        <button
+                          type="button"
+                          className={styles.detailBtn}
+                          aria-label={`查看 ${dimension.name} 明细`}
+                          onClick={() => openDimensionDetail(dimension)}
+                        >
+                          <Icon name="chevron" size={10} />
+                        </button>
+                      </th>
+                    );
+                  })}
                   <th scope="col" className={`${styles.th} ${styles.actionCol}`}>
                     <span className="sr-only">操作</span>
                   </th>
@@ -264,16 +362,32 @@ export function Rankings() {
                       <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
                         {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                       </td>
-                      <td className={styles.td}>
-                        <Coverage coverage={model.coverage} provisional={model.provisional} />
-                      </td>
-                      {dimensions.map((dimension) => (
-                        <td key={dimension.id} className={`${styles.td} ${styles.dimCol} ${styles.alignRight} ${styles.dimValue}`}>
-                          <DimensionScore
-                            value={model.scores[String(dimension.id)]}
-                            range={scoreRanges.get(dimension.id)}
-                            max={dimensionMaxima.get(dimension.id)}
-                          />
+                      {columns.groups.map((group) => (
+                        <td
+                          key={group.name}
+                          className={`${styles.td} ${styles.groupCol} ${styles.alignRight} ${styles.groupValue}`}
+                        >
+                          <span className={styles.cellRule} style={{ borderLeftColor: group.color }}>
+                            {formatScore(groupValue(group, model.scores, baselines, model.skips))}
+                          </span>
+                        </td>
+                      ))}
+                      {columns.ungrouped.map((dimension) => (
+                        <td
+                          key={dimension.id}
+                          className={`${styles.td} ${styles.dimCol} ${styles.alignRight} ${styles.dimValue}`}
+                        >
+                          <span className={styles.cellRule}>
+                            {model.skips.includes(dimension.id) ? (
+                              <span className={ui.skip}>Skip</span>
+                            ) : (
+                              <DimensionScore
+                                value={model.scores[String(dimension.id)]}
+                                range={scoreRanges.get(dimension.id)}
+                                max={dimensionMaxima.get(dimension.id)}
+                              />
+                            )}
+                          </span>
                         </td>
                       ))}
                       <td className={`${styles.td} ${styles.actionCol}`}>
@@ -305,7 +419,7 @@ export function Rankings() {
           <div className={styles.tableFoot}>
             <p>
               <span className={styles.footMark} aria-hidden="true" />
-              覆盖率低于 80% 标记为暂定
+              维度组占一列，组值为组内参与计算维度的加权平均，可与综合分互相还原
             </p>
             <p>权重合计 {data.totalWeight} / {percentageLabel}</p>
           </div>
@@ -342,7 +456,7 @@ export function Rankings() {
       <div className={styles.billHead}>
         <div className={styles.billIntro}>
           <p className={ui.sectionLabel}>当前榜单</p>
-          <span className={ui.sectionMeta}>{compositeNote}</span>
+          <span className={ui.sectionMeta}>{compositeNote} · 跳过维度按该维度 60% 中位分计入</span>
           {dimensionScoreEmphasis ? (
             <span className={ui.legend}>
               <span className={`${ui.legendSwatch} ${ui.legendLow}`} aria-hidden="true" />
@@ -352,12 +466,18 @@ export function Rankings() {
             </span>
           ) : null}
         </div>
-        {session.authenticated ? (
-          <Button variant="primary" onClick={() => setModelOpen(true)}>
-            <Icon name="plus" size={14} />
-            新增模型
+        <div className={styles.billActions}>
+          <Button compact onClick={() => void exportImage()} disabled={exporting || !data} aria-label="导出榜单图片">
+            <Icon name="download" size={13} />
+            {exporting ? "导出中…" : "导出图片"}
           </Button>
-        ) : null}
+          {session.authenticated ? (
+            <Button variant="primary" onClick={() => setModelOpen(true)}>
+              <Icon name="plus" size={14} />
+              新增模型
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {content}
@@ -407,6 +527,7 @@ export function Rankings() {
       {modelOpen ? (
         <ModelDialog open models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
       ) : null}
+      <DetailDrawer target={detail} rows={models} onClose={() => setDetail(null)} />
     </div>
   );
 }

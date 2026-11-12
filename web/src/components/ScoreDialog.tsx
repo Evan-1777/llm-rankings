@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
 import { api, errorMessage } from "../api/client";
-import type { ModelDetail, Rankings, RankingModel } from "../api/types";
-import { formatPercent, formatScore, previewRanking } from "../domain/ranking";
+import type { ModelDetail, ModelDimension, Rankings, RankingModel } from "../api/types";
+import { boardColumns, formatScore, previewRanking, type DimensionGroup } from "../domain/ranking";
 import { parseScoreInput } from "../domain/scoreInput";
 import { rankLabel } from "../lib/format";
 import { Button, IconButton } from "./Button";
@@ -18,16 +18,25 @@ interface DraftRow {
   note: string;
   text: string;
   openNote: boolean;
+  /** The dimension is marked as skipped instead of rated. */
+  skip: boolean;
 }
 
 interface OriginalRow {
   value: number | null;
   note: string;
   text: string;
+  skip: boolean;
 }
 
 const EMPTY_DIMENSIONS: ModelDetail["dimensions"] = [];
 const TEXT_LIMIT = 2000;
+
+/** Weight share floored to one decimal, so 79.9% never renders as 80%. */
+function percentLabel(ratio: number): string {
+  const value = Math.floor(ratio * 1000 + 1e-9) / 10;
+  return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
+}
 
 interface ScoreDialogProps {
   open: boolean;
@@ -69,6 +78,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
       .then((data) => {
         const nextDraft: Record<number, DraftRow> = {};
         const nextOriginal: Record<number, OriginalRow> = {};
+        const skipped = new Set(data.skips);
         for (const dimension of data.dimensions) {
           const text = dimension.textMode ? dimension.text ?? "" : "";
           nextDraft[dimension.id] = {
@@ -76,8 +86,9 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
             note: dimension.note ?? "",
             text,
             openNote: Boolean(dimension.note),
+            skip: skipped.has(dimension.id),
           };
-          nextOriginal[dimension.id] = { value: dimension.value, note: dimension.note ?? "", text };
+          nextOriginal[dimension.id] = { value: dimension.value, note: dimension.note ?? "", text, skip: skipped.has(dimension.id) };
         }
         setDetail(data);
         setDraft(nextDraft);
@@ -98,7 +109,32 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
     () => dimensions.filter((dimension) => !dimension.textMode && dimension.weight > 0),
     [dimensions],
   );
-  const firstNumericId = dimensions.find((dimension) => !dimension.textMode)?.id;
+  const columns = useMemo(() => boardColumns(dimensions), [dimensions]);
+  const totalWeight = useMemo(() => dimensions.reduce((sum, dimension) => sum + dimension.weight, 0), [dimensions]);
+
+  /** Unrated dimensions lead their group; groups holding one lead the dialog. */
+  const blocks = useMemo(() => {
+    const pending = (dimension: ModelDimension) => {
+      const row = draft[dimension.id];
+      return Boolean(row && !dimension.textMode && !row.skip && row.value.trim() === "");
+    };
+    const grouped: { group: DimensionGroup<ModelDimension> | null; dims: ModelDimension[] }[] = columns.groups.map((group) => ({
+      group,
+      dims: group.dimensions,
+    }));
+    if (columns.ungrouped.length > 0) grouped.push({ group: null, dims: columns.ungrouped });
+    return grouped
+      .map((block) => {
+        const dims = [...block.dims].sort((a, b) => Number(pending(b)) - Number(pending(a)));
+        return { ...block, dims, pendingCount: dims.filter(pending).length };
+      })
+      .sort((a, b) => Number(b.pendingCount > 0) - Number(a.pendingCount > 0));
+  }, [columns, draft]);
+
+  const firstNumericId = useMemo(
+    () => blocks.flatMap((block) => block.dims).find((dimension) => !dimension.textMode)?.id,
+    [blocks],
+  );
 
   useEffect(() => {
     if (!open || !detail) return;
@@ -112,6 +148,11 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
       [id]: { ...current[id], ...patch },
     }));
   };
+
+  const skips = useMemo(
+    () => dimensions.filter((dimension) => draft[dimension.id]?.skip).map((dimension) => dimension.id),
+    [dimensions, draft],
+  );
 
   const parsedValues = useMemo(() => {
     const values: Record<number, number | null> = {};
@@ -132,6 +173,7 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
         if (row.text.length > TEXT_LIMIT) next[dimension.id] = `文字不能超过 ${TEXT_LIMIT} 个字符`;
         continue;
       }
+      if (row.skip) continue;
       const parsed = parseScoreInput(row.value);
       if (parsed.error) next[dimension.id] = parsed.error;
       else if (row.note.length > 500) next[dimension.id] = "备注不能超过 500 个字符";
@@ -145,6 +187,8 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
       const base = original[dimension.id];
       if (!row || !base) return false;
       if (dimension.textMode) return row.text !== base.text;
+      if (row.skip !== base.skip) return true;
+      if (row.skip) return false;
       return parseScoreInput(row.value).value !== base.value || row.note !== base.note;
     });
   }, [dimensions, draft, original]);
@@ -167,8 +211,8 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
 
   const preview = useMemo(() => {
     if (!model) return null;
-    return previewRanking(previewRows, dimensions, model.slug, parsedValues, fallbackBaselines);
-  }, [model, previewRows, dimensions, parsedValues, fallbackBaselines]);
+    return previewRanking(previewRows, dimensions, model.slug, parsedValues, fallbackBaselines, skips);
+  }, [model, previewRows, dimensions, parsedValues, fallbackBaselines, skips]);
 
   const requestClose = useCallback(async () => {
     if (!dirty) {
@@ -228,14 +272,21 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
           }
           continue;
         }
-        const parsed = parseScoreInput(row.value);
-        if (parsed.value == null) {
-          if (base.value != null) {
-            await api.deleteScore(model.slug, dimension.id);
+        if (!row.skip) {
+          const parsed = parseScoreInput(row.value);
+          if (parsed.value == null) {
+            if (base.value != null) {
+              await api.deleteScore(model.slug, dimension.id);
+              applied += 1;
+            }
+          } else if (base.value == null || parsed.value !== base.value || row.note !== base.note) {
+            await api.putScore(model.slug, dimension.id, parsed.value, row.note);
             applied += 1;
           }
-        } else if (base.value == null || parsed.value !== base.value || row.note !== base.note) {
-          await api.putScore(model.slug, dimension.id, parsed.value, row.note);
+        }
+        if (row.skip !== base.skip) {
+          if (row.skip) await api.putSkip(model.slug, dimension.id);
+          else await api.deleteSkip(model.slug, dimension.id);
           applied += 1;
         }
       }
@@ -272,13 +323,6 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
             <strong className={styles.summaryValue}>{rankLabel(preview?.rank ?? null)}</strong>
           </div>
           <div className={styles.summaryCell}>
-            <span className={styles.summaryLabel}>覆盖率</span>
-            <strong className={styles.summaryValue}>
-              {formatPercent(preview?.coverage ?? 0)}
-              {preview?.provisional ? <span className={ui.tag}>暂定</span> : null}
-            </strong>
-          </div>
-          <div className={styles.summaryCell}>
             <span className={styles.summaryLabel}>已评分维度</span>
             <strong className={styles.summaryValue}>
               {preview?.scoredCount ?? 0} / {scoreableDimensions.length}
@@ -296,106 +340,136 @@ export function ScoreDialog({ open, model, rankings, onClose, onSaved }: ScoreDi
           <p className={styles.status}>没有可评分的维度。请先在设置中为维度设置权重。</p>
         ) : (
           <ul className={styles.rows}>
-            {dimensions.map((dimension) => {
-              const row = draft[dimension.id];
-              if (!row) return null;
-              const error = errors[dimension.id];
-              if (dimension.textMode) {
-                return (
-                  <li className={styles.row} key={dimension.id}>
-                    <div className={styles.textBlock}>
-                      <div className={styles.rowIdentity}>
-                        <span className={styles.rowName}>{dimension.name}</span>
-                        <span className={styles.rowWeight}>文字</span>
-                      </div>
-                      <textarea
-                        className={styles.textInput}
-                        value={row.text}
-                        maxLength={TEXT_LIMIT}
-                        rows={3}
-                        placeholder="中文或英文均可"
-                        aria-label={`${dimension.name} 文字`}
-                        aria-invalid={Boolean(error)}
-                        ref={dimension.id === firstTextId ? firstText : undefined}
-                        onChange={(event) => updateRow(dimension.id, { text: event.target.value })}
-                      />
-                    </div>
-                    {error ? (
-                      <p className={styles.rowError} role="alert">
-                        {error}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              }
-              // A note belongs to a score row, so it is only editable once the
-              // dimension has a value; otherwise a PUT would have nothing to send.
-              const hasScore = row.value.trim() !== "";
-              return (
-                <li className={styles.row} key={dimension.id}>
-                  <div className={styles.rowMain}>
-                    <div className={styles.rowIdentity}>
-                      <span className={styles.rowName}>{dimension.name}</span>
-                      <span className={styles.rowWeight}>权重 {dimension.weight}</span>
-                    </div>
-                    <input
-                      className={styles.scoreInput}
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.1"
-                      placeholder="—"
-                      value={row.value}
-                      ref={dimension.id === firstNumericId ? firstInput : undefined}
-                      aria-label={`${dimension.name} 评分`}
-                      aria-invalid={Boolean(error)}
-                      onChange={(event) => updateRow(dimension.id, { value: event.target.value })}
-                      onBlur={(event) => {
-                        const parsed = parseScoreInput(event.target.value);
-                        if (parsed.error == null && parsed.value != null) {
-                          updateRow(dimension.id, { value: String(parsed.value) });
-                        }
-                      }}
-                    />
-                    <IconButton
-                      label={
-                        hasScore
-                          ? row.openNote
-                            ? `收起 ${dimension.name} 评分备注`
-                            : `展开 ${dimension.name} 评分备注`
-                          : `${dimension.name} 备注需先填写评分`
-                      }
-                      active={hasScore && row.openNote}
-                      disabled={!hasScore}
-                      onClick={() => updateRow(dimension.id, { openNote: !row.openNote })}
-                    >
-                      <Icon name="note" />
-                    </IconButton>
-                  </div>
-                  {row.openNote && hasScore ? (
-                    <textarea
-                      className={styles.noteInput}
-                      value={row.note}
-                      maxLength={500}
-                      placeholder="测试条件与判断依据"
-                      aria-label={`${dimension.name} 评分备注`}
-                      onChange={(event) => updateRow(dimension.id, { note: event.target.value })}
-                    />
+            {blocks.map((block) => (
+              <li key={block.group?.name ?? "ungrouped"}>
+                <p className={styles.groupLabel}>
+                  {block.group ? <span className={styles.groupDot} style={{ background: block.group.color }} aria-hidden="true" /> : null}
+                  <span className={block.group ? styles.groupName : ui.sectionLabel}>{block.group?.name ?? "未分组"}</span>
+                  {block.group && totalWeight > 0 ? (
+                    <span className={styles.groupPct}>组内权重占比 {percentLabel(block.group.weight / totalWeight)}</span>
                   ) : null}
-                  {error ? (
-                    <p className={styles.rowError} role="alert">
-                      {error}
-                    </p>
-                  ) : null}
-                </li>
-              );
-            })}
+                  {block.pendingCount > 0 ? <span className={styles.pendingTag}>{block.pendingCount} 项待评分</span> : null}
+                </p>
+                <ul>
+                  {block.dims.map((dimension) => {
+                    const row = draft[dimension.id];
+                    if (!row) return null;
+                    const error = errors[dimension.id];
+                    if (dimension.textMode) {
+                      return (
+                        <li className={styles.row} key={dimension.id}>
+                          <div className={styles.textBlock}>
+                            <div className={styles.rowIdentity}>
+                              <span className={styles.rowName}>{dimension.name}</span>
+                              <span className={styles.rowWeight}>文字</span>
+                            </div>
+                            <textarea
+                              className={styles.textInput}
+                              value={row.text}
+                              maxLength={TEXT_LIMIT}
+                              rows={3}
+                              placeholder="中文或英文均可"
+                              aria-label={`${dimension.name} 文字`}
+                              aria-invalid={Boolean(error)}
+                              ref={dimension.id === firstTextId ? firstText : undefined}
+                              onChange={(event) => updateRow(dimension.id, { text: event.target.value })}
+                            />
+                          </div>
+                          {error ? (
+                            <p className={styles.rowError} role="alert">
+                              {error}
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    }
+                    // A note belongs to a score row, so it is only editable once the
+                    // dimension has a value; otherwise a PUT would have nothing to send.
+                    const unrated = !row.skip && row.value.trim() === "";
+                    const hasScore = !row.skip && !unrated;
+                    return (
+                      <li className={styles.row} key={dimension.id}>
+                        <div className={styles.rowMain} style={{ borderLeftColor: block.group?.color ?? "transparent" }}>
+                          <div className={styles.rowIdentity}>
+                            <span className={styles.rowName}>
+                              {dimension.name}
+                              {unrated ? <span className={styles.pendingTag}>未评分</span> : null}
+                            </span>
+                            <span className={styles.rowWeight}>权重 {dimension.weight}</span>
+                          </div>
+                          {row.skip ? (
+                            <span className={styles.skipBox}>Skip · 60% 中位分</span>
+                          ) : (
+                            <input
+                              className={styles.scoreInput}
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="0.1"
+                              placeholder="—"
+                              value={row.value}
+                              ref={dimension.id === firstNumericId ? firstInput : undefined}
+                              aria-label={`${dimension.name} 评分`}
+                              aria-invalid={Boolean(error)}
+                              onChange={(event) => updateRow(dimension.id, { value: event.target.value })}
+                              onBlur={(event) => {
+                                const parsed = parseScoreInput(event.target.value);
+                                if (parsed.error == null && parsed.value != null) {
+                                  updateRow(dimension.id, { value: String(parsed.value) });
+                                }
+                              }}
+                            />
+                          )}
+                          <IconButton
+                            label={row.skip ? `取消跳过 ${dimension.name}` : `跳过 ${dimension.name}`}
+                            active={row.skip}
+                            aria-pressed={row.skip}
+                            onClick={() => updateRow(dimension.id, { skip: !row.skip, openNote: row.skip ? row.openNote : false })}
+                          >
+                            <Icon name={row.skip ? "skip" : "skipOff"} />
+                          </IconButton>
+                          <IconButton
+                            label={
+                              hasScore
+                                ? row.openNote
+                                  ? `收起 ${dimension.name} 评分备注`
+                                  : `展开 ${dimension.name} 评分备注`
+                                : `${dimension.name} 备注需先填写评分`
+                            }
+                            active={hasScore && row.openNote}
+                            disabled={!hasScore}
+                            onClick={() => updateRow(dimension.id, { openNote: !row.openNote })}
+                          >
+                            <Icon name="note" />
+                          </IconButton>
+                        </div>
+                        {row.openNote && hasScore ? (
+                          <textarea
+                            className={styles.noteInput}
+                            value={row.note}
+                            maxLength={500}
+                            placeholder="测试条件与判断依据"
+                            aria-label={`${dimension.name} 评分备注`}
+                            onChange={(event) => updateRow(dimension.id, { note: event.target.value })}
+                          />
+                        ) : null}
+                        {error ? (
+                          <p className={styles.rowError} role="alert">
+                            {error}
+                          </p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
           </ul>
         )}
       </div>
       <div className={ui.dialogFoot}>
         <div className={styles.footNote}>
-          <span className={styles.footHint}>非负、不设上限，保留一位小数</span>
+          <span className={styles.footHint}>非负、不设上限，保留一位小数；跳过维度按该维度 60% 中位分计入总分</span>
           {saveError ? (
             <span className={styles.saveError} role="alert">
               {saveError}

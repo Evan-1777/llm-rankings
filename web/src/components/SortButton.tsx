@@ -4,7 +4,10 @@ import styles from "./SortButton.module.css";
 
 interface SortButtonProps {
   label: string;
-  weight?: number;
+  /** Second line under the label: the column weight or a group summary. */
+  sub?: string;
+  /** Group swatch rendered before the label. */
+  dot?: string;
   active: boolean;
   dir: SortDir;
   align?: "left" | "right";
@@ -14,7 +17,7 @@ interface SortButtonProps {
 }
 
 /** Shared column sort control; the semantic <th> and aria-sort stay with the page. */
-export function SortButton({ label, weight, active, dir, align = "left", wrap = false, onClick }: SortButtonProps) {
+export function SortButton({ label, sub, dot, active, dir, align = "left", wrap = false, onClick }: SortButtonProps) {
   return (
     <button
       type="button"
@@ -22,10 +25,11 @@ export function SortButton({ label, weight, active, dir, align = "left", wrap = 
       onClick={onClick}
     >
       <span className={`${styles.label} ${active ? styles.active : ""} ${wrap ? styles.wrap : ""}`}>
+        {dot ? <span className={styles.dot} style={{ background: dot }} aria-hidden="true" /> : null}
         {label}
         {active ? <Icon name={dir === "asc" ? "arrowUp" : "arrowDown"} size={11} /> : null}
       </span>
-      {weight != null ? <span className={styles.weight}>{weight}</span> : null}
+      {sub != null ? <span className={styles.sub}>{sub}</span> : null}
     </button>
   );
 }

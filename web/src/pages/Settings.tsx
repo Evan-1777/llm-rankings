@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useBlocker, useNavigate, useSearchParams, type Location } from "react-router-dom";
 import { ApiError, api, errorMessage } from "../api/client";
 import type { Dimension, ModelSummary } from "../api/types";
@@ -12,6 +12,7 @@ import { PageHeading } from "../components/PageHeading";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useToast } from "../components/Toast";
 import ui from "../components/ui.module.css";
+import { boardColumns } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { monthKicker } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -91,6 +92,11 @@ export function Settings() {
   const [modelOpen, setModelOpen] = useState(false);
   const [modelEdit, setModelEdit] = useState<ModelSummary | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkName, setBulkName] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [newGroupFor, setNewGroupFor] = useState<number | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
   const [notesReady, setNotesReady] = useState(false);
   const [notesSaving, setNotesSaving] = useState(false);
@@ -115,6 +121,22 @@ export function Settings() {
   const totalScores = models.reduce((sum, model) => sum + model.scoreCount, 0);
   const totalWeight = activeDimensions.reduce((sum, dimension) => sum + dimension.weight, 0);
   const visibleKey = visibleDimensions.map((dimension) => dimension.id).join(",");
+  const groupNames = useMemo(() => {
+    const names: string[] = [];
+    for (const dimension of dimensions) {
+      const name = dimension.groupName.trim();
+      if (name && !names.includes(name)) names.push(name);
+    }
+    return names;
+  }, [dimensions]);
+  // Board colours follow the active dimensions, so the swatch here matches the column.
+  const groupColors = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of boardColumns(dimensions.filter((dimension) => !dimension.archivedAt)).groups) {
+      map.set(group.name, group.color);
+    }
+    return map;
+  }, [dimensions]);
 
   const setTab = (next: Tab) => {
     const nextParams = new URLSearchParams(params);
@@ -335,6 +357,41 @@ export function Settings() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [notesPending]);
 
+  const toggleSelected = (id: number) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /**
+   * Grouping reuses the single-dimension PATCH: the selected ids are submitted
+   * one by one so a partial failure only leaves the remaining ids to retry.
+   */
+  const assignGroup = async (ids: number[], name: string) => {
+    if (ids.length === 0 || bulkBusy) return;
+    const groupName = name.trim() === "" ? null : name.trim();
+    setBulkBusy(true);
+    let submitted = 0;
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await api.updateDimension(id, { groupName });
+        submitted += 1;
+      } catch (caught) {
+        failed += 1;
+        if (failed === 1) toast(errorMessage(caught), "error");
+      }
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    if (failed === 0) toast(groupName == null ? "已移出分组" : `已分配到「${groupName}」`);
+    else toast(`已提交 ${submitted}/${ids.length}，失败项可重试`, "error");
+    refreshAll();
+  };
+
   const openNewDimension = () => {
     setDimensionEdit(null);
     setDimensionOpen(true);
@@ -490,6 +547,43 @@ export function Settings() {
           </Button>
         </div>
 
+        {selected.size > 0 ? (
+          <div className={styles.bulkBar}>
+            <span className={styles.bulkNames}>
+              已选择 {selected.size} 个维度：
+              {dimensions
+                .filter((dimension) => selected.has(dimension.id))
+                .map((dimension) => dimension.name)
+                .join("、")}
+            </span>
+            <div className={styles.bulkActions}>
+              <input
+                className={styles.bulkInput}
+                value={bulkName}
+                maxLength={20}
+                list="dimension-groups"
+                placeholder="组名"
+                aria-label="批量组名"
+                onChange={(event) => setBulkName(event.target.value)}
+              />
+              <Button compact onClick={() => void assignGroup([...selected], bulkName)} disabled={bulkBusy || bulkName.trim() === ""}>
+                分配到组
+              </Button>
+              <Button compact onClick={() => void assignGroup([...selected], "")} disabled={bulkBusy}>
+                移出分组
+              </Button>
+              <Button compact onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+                清除选择
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        <datalist id="dimension-groups">
+          {groupNames.map((group) => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
+
         {visibleDimensions.length === 0 ? (
           <EmptyState title={archivedDimensions.length > 0 ? "没有启用的维度" : "尚未创建维度"} text="维度决定排行与评分弹窗中的评分项。">
             <Button variant="primary" onClick={openNewDimension}>
@@ -499,10 +593,12 @@ export function Settings() {
         ) : (
           <div className={styles.list} ref={listRef}>
             <div className={`${styles.listHead} ${styles.dimCols}`}>
+              <span />
               <span>#</span>
               <span>维度</span>
               <span>权重</span>
               <span>状态</span>
+              <span>维度组</span>
               <span className={styles.actionsHead}>操作</span>
             </div>
             {visibleDimensions.map((dimension, index) => (
@@ -513,6 +609,14 @@ export function Settings() {
                 data-dim-row
                 key={dimension.id}
               >
+                <span className={styles.pickCell}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(dimension.id)}
+                    onChange={() => toggleSelected(dimension.id)}
+                    aria-label={`选择 ${dimension.name}`}
+                  />
+                </span>
                 <button
                   type="button"
                   className={styles.handle}
@@ -548,6 +652,65 @@ export function Settings() {
                     <span className={`${styles.statusTag} ${styles.statusIdle}`}>不纳入</span>
                   ) : (
                     <span className={styles.statusLive}>参与排行</span>
+                  )}
+                </span>
+                <span className={styles.groupCell}>
+                  {!dimension.archivedAt && dimension.weight > 0 && !dimension.textMode ? (
+                    newGroupFor === dimension.id ? (
+                      <input
+                        type="text"
+                        className={styles.groupInput}
+                        value={newGroupName}
+                        maxLength={20}
+                        autoFocus
+                        placeholder="组名"
+                        aria-label={`${dimension.name} 新组名`}
+                        onChange={(event) => setNewGroupName(event.target.value)}
+                        onBlur={() => setNewGroupFor(null)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void assignGroup([dimension.id], newGroupName);
+                            setNewGroupFor(null);
+                          } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            setNewGroupFor(null);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <span
+                          className={styles.groupSwatch}
+                          style={{ background: groupColors.get(dimension.groupName) ?? "transparent" }}
+                          aria-hidden="true"
+                        />
+                        <select
+                          className={ui.select}
+                          value={dimension.groupName}
+                          disabled={bulkBusy}
+                          aria-label={`${dimension.name} 维度组`}
+                          onChange={(event) => {
+                            if (event.target.value === "__new") {
+                              setNewGroupName("");
+                              setNewGroupFor(dimension.id);
+                              return;
+                            }
+                            void assignGroup([dimension.id], event.target.value);
+                          }}
+                        >
+                          <option value="">不分组</option>
+                          {groupNames.map((group) => (
+                            <option key={group} value={group}>
+                              {group}
+                            </option>
+                          ))}
+                          <option value="__new">+ 新建组名…</option>
+                        </select>
+                      </>
+                    )
+                  ) : (
+                    <span className={styles.groupNone}>—</span>
                   )}
                 </span>
                 <div className={styles.rowActions}>
@@ -871,6 +1034,7 @@ export function Settings() {
       <DimensionDialog
         open={dimensionOpen}
         dimension={dimensionEdit}
+        groups={groupNames}
         onClose={() => setDimensionOpen(false)}
         onSaved={refreshAll}
       />

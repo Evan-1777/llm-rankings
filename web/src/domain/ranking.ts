@@ -1,10 +1,26 @@
-// Pure ranking, coverage and sorting rules shared with the Go implementation.
+// Pure ranking, sorting and group rules shared with the Go implementation.
 export interface Dimension {
   id: number;
   name: string;
   weight: number;
+  /** Dimensions sharing a name form one board column; empty means no group. */
+  groupName?: string | null;
   /** Fixed percentage baseline; null means the snapshot maximum. */
   baselineMax?: number | null;
+  /** Converted value a skip contributes to the composite. */
+  skipMedian?: number | null;
+  /** Baseline the current snapshot resolved for this dimension. */
+  effectiveBaselineMax?: number | null;
+}
+
+/** Effective baselines carried by a board snapshot, keyed by dimension. */
+export function snapshotBaselines(dimensions: Dimension[]): Map<number, number> {
+  const baselines = new Map<number, number>();
+  for (const dimension of dimensions) {
+    const baseline = dimension.effectiveBaselineMax;
+    if (baseline != null && Number.isFinite(baseline)) baselines.set(dimension.id, baseline);
+  }
+  return baselines;
 }
 
 export interface RankRow {
@@ -14,32 +30,19 @@ export interface RankRow {
   /** Hidden models sort after every visible model and never receive a rank. */
   hidden?: boolean;
   score: number | null;
-  coverage: number;
-  provisional: boolean;
   rank: number | null;
   scores: Record<string, number>;
+  /** Dimensions this model does not use. */
+  skips?: number[];
+  /** Rated dimensions with a positive weight; drives the workbench default sort. */
+  scoredCount?: number;
 }
 
 export type SortDir = "asc" | "desc";
 
 export interface Composite {
   score: number | null;
-  coverage: number;
-  provisional: boolean;
   scoredCount: number;
-}
-
-export const PROVISIONAL_THRESHOLD = 0.8;
-
-/** Floor coverage to one decimal percent, so 79.9% never renders as 80%. */
-export function truncatePercent(coverage: number): number {
-  if (!Number.isFinite(coverage) || coverage <= 0) return 0;
-  return Math.floor(coverage * 1000 + 1e-9) / 10;
-}
-
-export function formatPercent(coverage: number): string {
-  const value = truncatePercent(coverage);
-  return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
 }
 
 export function formatScore(value: number | null | undefined): string {
@@ -94,11 +97,34 @@ export function convertScore(value: number, baseline: number | undefined): numbe
   return (value / baseline) * 100;
 }
 
+export function skipSet(skips: Iterable<number> | undefined): Set<number> {
+  return new Set(skips ?? []);
+}
+
+/**
+ * The value one dimension column contributes to the composite, on the converted
+ * scale: the imputed median when skipped, the converted rating when rated, and
+ * nothing when the model neither rated nor skipped the dimension.
+ */
+export function columnValue(
+  dimension: Dimension,
+  scores: Record<string, number>,
+  baselines: Map<number, number>,
+  skips?: Iterable<number>,
+): number | null {
+  if (skipSet(skips).has(dimension.id)) return dimension.skipMedian ?? 0;
+  const value = scores[String(dimension.id)];
+  if (value == null || !Number.isFinite(value) || value < 0) return null;
+  return convertScore(value, baselines.get(dimension.id));
+}
+
 export function composite(
   dimensions: Dimension[],
   scores: Record<string, number>,
   baselines: Map<number, number>,
+  skips?: Iterable<number>,
 ): Composite {
+  const skipped = skipSet(skips);
   // Accumulate in stable id order so the display order never changes the
   // floating-point result.
   const ordered = [...dimensions].sort((a, b) => a.id - b.id);
@@ -107,30 +133,104 @@ export function composite(
     if (dimension.weight > 0) totalWeight += dimension.weight;
   }
   if (totalWeight === 0) {
-    return { score: null, coverage: 0, provisional: false, scoredCount: 0 };
+    return { score: null, scoredCount: 0 };
   }
   let scoredWeight = 0;
   let weighted = 0;
   let scoredCount = 0;
   for (const dimension of ordered) {
     if (dimension.weight <= 0) continue;
+    const isSkipped = skipped.has(dimension.id);
     const value = scores[String(dimension.id)];
-    if (value == null || !Number.isFinite(value) || value < 0) continue;
+    const rated = value != null && Number.isFinite(value) && value >= 0;
+    if (!rated && !isSkipped) continue;
     scoredWeight += dimension.weight;
-    scoredCount += 1;
-    weighted += (dimension.weight / totalWeight) * convertScore(value, baselines.get(dimension.id));
+    // A skipped dimension keeps its weight but drops out of the rated count.
+    if (!isSkipped) scoredCount += 1;
+    const converted = isSkipped
+      ? dimension.skipMedian ?? 0
+      : convertScore(value ?? 0, baselines.get(dimension.id));
+    weighted += (dimension.weight / totalWeight) * converted;
   }
   if (scoredWeight === 0) {
-    return { score: null, coverage: 0, provisional: false, scoredCount: 0 };
+    return { score: null, scoredCount: 0 };
   }
-  const coverage = scoredWeight / totalWeight;
-  return {
-    score: weighted / (scoredWeight / totalWeight),
-    coverage,
-    provisional: coverage < PROVISIONAL_THRESHOLD,
-    scoredCount,
-  };
+  return { score: weighted / (scoredWeight / totalWeight), scoredCount };
 }
+
+/* ---------------------------------------------------------------- 维度组 --- */
+
+/** Stable group palette; the slot follows the group's order on the board. */
+export const GROUP_COLORS = ["#2F6B4F", "#1F5C8B", "#8A5A16", "#6B4A8B", "#8B3A52", "#3F6B6B"] as const;
+
+export interface DimensionGroup<T extends Dimension = Dimension> {
+  name: string;
+  color: string;
+  /** Member dimensions in board order (each keeps its own weight). */
+  dimensions: T[];
+  /** Sum of the member weights, including dimensions without a rating. */
+  weight: number;
+}
+
+export interface BoardColumns<T extends Dimension = Dimension> {
+  groups: DimensionGroup<T>[];
+  ungrouped: T[];
+}
+
+/**
+ * Splits the numeric dimensions into group columns and single-dimension columns.
+ * A group is only a display bundle: text and zero-weight dimensions never join
+ * one, and group order follows the first member's board position.
+ */
+export function boardColumns<T extends Dimension>(dimensions: T[]): BoardColumns<T> {
+  const groups = new Map<string, DimensionGroup<T>>();
+  const ungrouped: T[] = [];
+  for (const dimension of dimensions) {
+    const name = (dimension.groupName ?? "").trim();
+    if (!name || dimension.weight <= 0) {
+      ungrouped.push(dimension);
+      continue;
+    }
+    let group = groups.get(name);
+    if (!group) {
+      group = { name, color: GROUP_COLORS[groups.size % GROUP_COLORS.length], dimensions: [], weight: 0 };
+      groups.set(name, group);
+    }
+    group.dimensions.push(dimension);
+    group.weight += dimension.weight;
+  }
+  return { groups: [...groups.values()], ungrouped };
+}
+
+export function groupKey(name: string): string {
+  return `group-${name}`;
+}
+
+/**
+ * Group value = Σ(weight × converted) ÷ Σ(weight) over the members the model
+ * rated or skipped, matching the composite denominator so the two can be
+ * reconciled. A group without participating members has no value.
+ */
+export function groupValue(
+  group: DimensionGroup,
+  scores: Record<string, number>,
+  baselines: Map<number, number>,
+  skips?: Iterable<number>,
+): number | null {
+  const skipped = skipSet(skips);
+  let weight = 0;
+  let sum = 0;
+  for (const dimension of group.dimensions) {
+    if (dimension.weight <= 0) continue;
+    const converted = columnValue(dimension, scores, baselines, skipped);
+    if (converted == null) continue;
+    weight += dimension.weight;
+    sum += dimension.weight * converted;
+  }
+  return weight > 0 ? sum / weight : null;
+}
+
+/* ------------------------------------------------------------------ 排序 --- */
 
 export function dimensionKey(id: number): string {
   return `dim-${id}`;
@@ -142,10 +242,19 @@ function dimensionIdFromKey(key: string): number | null {
   return Number.isInteger(id) ? id : null;
 }
 
-function rowValue(row: RankRow, key: string): number | null {
+function rowValue(
+  row: RankRow,
+  key: string,
+  groups: DimensionGroup[],
+  baselines: Map<number, number>,
+): number | null {
   if (key === "score") return row.score;
   if (key === "rank") return row.rank;
-  if (key === "coverage") return row.coverage;
+  if (key === "scored") return row.scoredCount ?? 0;
+  if (key.startsWith("group-")) {
+    const group = groups.find((item) => groupKey(item.name) === key);
+    return group ? groupValue(group, row.scores, baselines, row.skips) : null;
+  }
   const id = dimensionIdFromKey(key);
   if (id == null) return null;
   const value = row.scores[String(id)];
@@ -163,14 +272,18 @@ function compareNames(a: RankRow, b: RankRow): number {
 }
 
 export interface SortOptions {
-  /** Lets unscored rows participate for the model and coverage keys instead of forcing them last. */
-  keepUnscored?: boolean;
+  /** Workbench view: rows without a composite lead in either direction, except under the model key. */
+  unscoredFirst?: boolean;
+  /** Group metadata for the group-<name> sort keys. */
+  groups?: DimensionGroup[];
+  /** Converted baselines for the group-<name> sort keys. */
+  baselines?: Map<number, number>;
 }
 
 /**
  * Sorts a copy for the view layer. Official rank is never recomputed and rows
- * without a composite score stay last regardless of direction unless the key
- * and options explicitly let them participate.
+ * without a composite score stay last regardless of direction unless the
+ * options explicitly let them participate.
  */
 export function sortRows<T extends RankRow>(rows: T[], key: string, dir: SortDir, options: SortOptions = {}): T[] {
   const visible = rows.filter((row) => !row.hidden);
@@ -179,18 +292,25 @@ export function sortRows<T extends RankRow>(rows: T[], key: string, dir: SortDir
 }
 
 function sortGroup<T extends RankRow>(rows: T[], key: string, dir: SortDir, options: SortOptions): T[] {
-  const keepUnscored = options.keepUnscored === true && (key === "model" || key === "coverage");
+  const unscored = (row: T) => row.score == null;
+  // The workbench leads with unrated rows, the board keeps them last, and the
+  // model key always orders by name so unrated rows stay in place.
+  const lead = key === "model" ? null : options.unscoredFirst === true;
+  const groups = options.groups ?? [];
+  const baselines = options.baselines ?? new Map<number, number>();
   const sorted = [...rows];
   sorted.sort((a, b) => {
-    if (!keepUnscored && (a.score == null) !== (b.score == null)) return a.score == null ? 1 : -1;
+    if (lead !== null && unscored(a) !== unscored(b)) {
+      return unscored(a) === lead ? -1 : 1;
+    }
 
     if (key === "model") {
       const names = compareNames(a, b);
       return dir === "asc" ? names : -names;
     }
 
-    const av = rowValue(a, key);
-    const bv = rowValue(b, key);
+    const av = rowValue(a, key, groups, baselines);
+    const bv = rowValue(b, key, groups, baselines);
     if (av == null || bv == null) {
       if (av == null && bv == null) return compareOfficial(a, b);
       return av == null ? 1 : -1;
@@ -201,9 +321,9 @@ function sortGroup<T extends RankRow>(rows: T[], key: string, dir: SortDir, opti
   return sorted;
 }
 
-/** Workbench view sort: requests unscored participation; sortRows keeps it to the model and coverage keys. */
+/** Workbench view sort: unscored rows lead, while hidden rows stay last. */
 export function sortWorkbenchRows<T extends RankRow>(rows: T[], key: string, dir: SortDir): T[] {
-  return sortRows(rows, key, dir, { keepUnscored: true });
+  return sortRows(rows, key, dir, { unscoredFirst: true });
 }
 
 function compareOfficial(a: RankRow, b: RankRow): number {
@@ -217,8 +337,6 @@ function compareOfficial(a: RankRow, b: RankRow): number {
 
 export interface Preview {
   score: number | null;
-  coverage: number;
-  provisional: boolean;
   rank: number | null;
   scoredCount: number;
 }
@@ -230,11 +348,15 @@ export function previewRanking(
   slug: string,
   values: Record<number, number | null>,
   fallback?: Record<number, number | null>,
+  skips: number[] = [],
 ): Preview {
   const drafts = new Map<string, Record<string, number>>();
+  const skipDrafts = new Map<string, number[]>();
   for (const row of rows) {
     const scores: Record<string, number> = { ...row.scores };
+    let rowSkips = row.skips ?? [];
     if (row.slug === slug) {
+      rowSkips = skips;
       for (const dimension of dimensions) {
         const value = values[dimension.id];
         if (value == null || !Number.isFinite(value) || value < 0) delete scores[String(dimension.id)];
@@ -242,6 +364,7 @@ export function previewRanking(
       }
     }
     drafts.set(row.slug, scores);
+    skipDrafts.set(row.slug, rowSkips);
   }
 
   // Resolve baselines after merging the draft so raising the top score lifts
@@ -249,14 +372,13 @@ export function previewRanking(
   const baselines = resolveBaselines(dimensions, [...drafts.values()], fallback);
   const computed = rows.map((row) => ({
     row,
-    result: composite(dimensions, drafts.get(row.slug) ?? {}, baselines),
+    result: composite(dimensions, drafts.get(row.slug) ?? {}, baselines, skipDrafts.get(row.slug)),
   }));
   computed.sort((a, b) => {
     if (Boolean(a.row.hidden) !== Boolean(b.row.hidden)) return a.row.hidden ? 1 : -1;
     if ((a.result.score == null) !== (b.result.score == null)) return a.result.score == null ? 1 : -1;
-    if (a.result.score != null && b.result.score != null) {
-      if (a.result.score !== b.result.score) return b.result.score - a.result.score;
-      if (a.result.coverage !== b.result.coverage) return b.result.coverage - a.result.coverage;
+    if (a.result.score != null && b.result.score != null && a.result.score !== b.result.score) {
+      return b.result.score - a.result.score;
     }
     return compareNames(a.row, b.row);
   });
@@ -270,21 +392,16 @@ export function previewRanking(
     }
   }
   const target = computed.find((item) => item.row.slug === slug);
-  return {
-    score: target?.result.score ?? null,
-    coverage: target?.result.coverage ?? 0,
-    provisional: target?.result.provisional ?? false,
-    rank: null,
-    scoredCount: target?.result.scoredCount ?? 0,
-  };
+  return { score: target?.result.score ?? null, rank: null, scoredCount: target?.result.scoredCount ?? 0 };
 }
 
-/** Highest score for a dimension across all models. */
+/** Highest score for a dimension across the models that rated it. */
 export function dimensionMax(rows: RankRow[], dimensionId: number): number {
   let max = 0;
   for (const row of rows) {
+    if (skipSet(row.skips).has(dimensionId)) continue;
     const value = row.scores[String(dimensionId)];
-    if (value != null && Number.isFinite(value) && value > max) max = value;
+    if (value != null && Number.isFinite(value) && value >= 0 && value > max) max = value;
   }
   return max;
 }
@@ -295,14 +412,15 @@ export function barWidth(value: number | null | undefined, max: number): number 
 }
 
 /**
- * Ordinal rank of every scored model within each dimension, using the same
- * value/name/slug order as the official ranking. Unscored models are omitted.
+ * Ordinal rank of every model that rated a dimension, using the same
+ * value/name/slug order as the official ranking. Skipped and unscored models
+ * are omitted.
  */
 export function dimensionRanks(rows: RankRow[], dimensionIds: Iterable<number>): Map<number, Map<string, number>> {
   const ranks = new Map<number, Map<string, number>>();
   for (const id of dimensionIds) {
     const key = String(id);
-    const scored = rows.filter((row) => row.scores[key] != null);
+    const scored = rows.filter((row) => !skipSet(row.skips).has(id) && row.scores[key] != null);
     scored.sort((a, b) => b.scores[key] - a.scores[key] || compareNames(a, b));
     const bySlug = new Map<string, number>();
     scored.forEach((row, index) => bySlug.set(row.slug, index + 1));

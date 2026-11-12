@@ -10,6 +10,8 @@ export interface Dimension {
   description: string;
   weight: number;
   textMode: boolean;
+  /** Dimensions sharing a name form one board column; empty means no group. */
+  groupName: string;
   /** Fixed percentage baseline; null means the current highest score is used. */
   baselineMax: number | null;
   /** Baseline used by the current snapshot; only the list and export fill it. */
@@ -31,8 +33,12 @@ export interface RankingDimension {
   id: number;
   name: string;
   weight: number;
+  /** Dimensions sharing a name form one board column; empty means no group. */
+  groupName: string;
   baselineMax: number | null;
   effectiveBaselineMax: number | null;
+  /** Converted value a skip contributes to the composite; null for text columns. */
+  skipMedian: number | null;
 }
 
 export interface RankingModel {
@@ -41,10 +47,12 @@ export interface RankingModel {
   vendor: string;
   hidden: boolean;
   score: number | null;
-  coverage: number;
-  provisional: boolean;
   rank: number | null;
+  /** Rated dimensions with a positive weight; skipped ones are not counted. */
+  scoredCount: number;
   scores: Record<string, number>;
+  /** Dimensions this model does not use; the composite imputes their median. */
+  skips: number[];
 }
 
 export interface Rankings {
@@ -91,9 +99,13 @@ export interface ModelDimension {
   name: string;
   weight: number;
   textMode: boolean;
+  /** Dimensions sharing a name form one board column; empty means no group. */
+  groupName: string;
   value: number | null;
   baselineMax: number | null;
   effectiveBaselineMax: number | null;
+  /** Converted value a skip contributes to the composite; null for text columns. */
+  skipMedian: number | null;
   text?: string;
   note?: string;
 }
@@ -108,12 +120,12 @@ export interface ModelDetail {
   commentaryPublic?: boolean;
   commentaryAt?: string;
   score: number | null;
-  coverage: number;
-  provisional: boolean;
   rank: number | null;
   dimensions: ModelDimension[];
   scoredCount: number;
   dimensionCount: number;
+  /** Dimensions this model does not use; the composite imputes their median. */
+  skips: number[];
   updatedAt: string;
 }
 
@@ -123,6 +135,8 @@ export interface DimensionInput {
   weight: number;
   textMode: boolean;
   baselineMax: number | null;
+  /** null clears the group; omitted keeps the stored value. */
+  groupName?: string | null;
 }
 
 export interface ModelInput {

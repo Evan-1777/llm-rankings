@@ -3,7 +3,7 @@ import { Icon } from "./Icons";
 import { IconButton } from "./Button";
 import ui from "./ui.module.css";
 
-type Width = "narrow" | "model" | "wide" | "default";
+type Width = "narrow" | "model" | "wide" | "drawer" | "default";
 
 interface DialogProps {
   open: boolean;
@@ -50,7 +50,16 @@ export function Dialog({ open, onRequestClose, labelledBy, width = "default", ch
     return () => dialog.removeEventListener("cancel", onCancel);
   }, [onRequestClose]);
 
-  const widthClass = width === "narrow" ? ui.dialogNarrow : width === "wide" ? ui.dialogWide : width === "model" ? ui.dialogModel : "";
+  const widthClass =
+    width === "narrow"
+      ? ui.dialogNarrow
+      : width === "wide"
+        ? ui.dialogWide
+        : width === "model"
+          ? ui.dialogModel
+          : width === "drawer"
+            ? ui.dialogDrawer
+            : "";
 
   return (
     <dialog

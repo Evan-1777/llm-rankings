@@ -61,7 +61,7 @@
 
 .dimCols {
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr) 80px 120px 132px;
+  grid-template-columns: 26px 60px minmax(0, 1fr) 80px 112px 168px 132px;
   gap: 16px;
 }
 
@@ -86,7 +86,7 @@
 }
 
 .dimRow {
-  grid-template-columns: 60px minmax(0, 1fr) 80px 120px 132px;
+  grid-template-columns: 26px 60px minmax(0, 1fr) 80px 112px 168px 132px;
 }
 
 .modelRow {
@@ -227,6 +227,94 @@
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.pickCell {
+  display: flex;
+  align-items: center;
+}
+
+.pickCell input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.groupCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.groupCell select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.groupSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid var(--rule);
+}
+
+.groupInput {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  font-size: 12px;
+}
+
+.groupNone {
+  color: var(--ink-3);
+}
+
+.bulkBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.bulkNames {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.bulkActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.bulkInput {
+  width: 150px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  font-size: 12px;
+}
+
+.bulkInput:focus-visible {
+  border-color: var(--ink);
+  outline: 2px solid var(--ink);
+  outline-offset: 0;
 }
 
 .archiveSection {
@@ -412,7 +500,7 @@
 @media (max-width: 900px) {
   .dimCols,
   .dimRow {
-    grid-template-columns: 44px minmax(0, 1fr) 60px 100px 124px;
+    grid-template-columns: 24px 44px minmax(0, 1fr) 56px 96px 150px 124px;
     gap: 10px;
   }
 
@@ -468,10 +556,11 @@
   }
 
   .dimRow {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: 26px 44px minmax(0, 1fr) auto;
     grid-template-areas:
-      "handle name actions"
-      "handle meta actions";
+      "pick handle name actions"
+      "pick handle meta actions"
+      "group group group group";
     gap: 4px 10px;
   }
 
@@ -501,6 +590,17 @@
 
   .nameBlock {
     grid-area: name;
+  }
+
+  .pickCell {
+    grid-area: pick;
+    align-self: start;
+    padding-top: 4px;
+  }
+
+  .groupCell {
+    grid-area: group;
+    padding-bottom: 4px;
   }
 
   .weight {

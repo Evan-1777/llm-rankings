@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { RankingModel } from "../api/types";
 import { Button, IconButton } from "../components/Button";
-import { Coverage } from "../components/Coverage";
 import { DimensionScore } from "../components/DimensionScore";
 import { Icon } from "../components/Icons";
 import { PageHeading } from "../components/PageHeading";
@@ -126,9 +125,6 @@ export function Compare() {
                         {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                       </div>
                     </div>
-                    <div className={styles.coverageRow}>
-                      <Coverage coverage={model.coverage} provisional={model.provisional} />
-                    </div>
                   </th>
                 ))}
               </tr>
@@ -144,11 +140,15 @@ export function Compare() {
                   </th>
                   {selected.map((model) => (
                     <td key={model.slug} className={styles.valueCell}>
-                      <DimensionScore
-                        value={model.scores[String(dimension.id)]}
-                        range={scoreRanges.get(dimension.id)}
-                        max={dimensionMaxima.get(dimension.id)}
-                      />
+                      {model.skips.includes(dimension.id) ? (
+                        <span className={ui.skip}>Skip</span>
+                      ) : (
+                        <DimensionScore
+                          value={model.scores[String(dimension.id)]}
+                          range={scoreRanges.get(dimension.id)}
+                          max={dimensionMaxima.get(dimension.id)}
+                        />
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -156,6 +156,7 @@ export function Compare() {
             </tbody>
           </table>
         </div>
+        <p className={styles.tableFoot}>跳过维度按该维度 60% 中位分计入总分，不参与该维度名次</p>
 
         <div className={styles.cards}>
           {selected.map((model) => (
@@ -178,7 +179,6 @@ export function Compare() {
                     {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
                   </strong>
                 </div>
-                <Coverage coverage={model.coverage} provisional={model.provisional} />
               </div>
               <dl className={styles.cardDims}>
                 {dimensions.map((dimension) => (
@@ -188,11 +188,15 @@ export function Compare() {
                       <span className={styles.weight}>{dimension.weight}</span>
                     </dt>
                     <dd>
-                      <DimensionScore
-                        value={model.scores[String(dimension.id)]}
-                        range={scoreRanges.get(dimension.id)}
-                        max={dimensionMaxima.get(dimension.id)}
-                      />
+                      {model.skips.includes(dimension.id) ? (
+                        <span className={ui.skip}>Skip</span>
+                      ) : (
+                        <DimensionScore
+                          value={model.scores[String(dimension.id)]}
+                          range={scoreRanges.get(dimension.id)}
+                          max={dimensionMaxima.get(dimension.id)}
+                        />
+                      )}
                     </dd>
                   </div>
                 ))}

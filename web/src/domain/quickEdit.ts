@@ -1,15 +1,31 @@
 import type { RankingDimension, RankingModel } from "../api/types";
 import { formatDimension } from "./ranking.ts";
-import { parseScoreInput } from "./scoreInput.ts";
+import { parseScoreInput, SKIP_KEYWORD } from "./scoreInput.ts";
 
 export type QuickEditDraft = Record<string, Record<string, string>>;
-export type QuickEditBaseline = Record<string, Record<string, number | null>>;
+
+/** One cell's stored state, used to decide which writes a draft still needs. */
+export interface QuickEditCell {
+  value: number | null;
+  skip: boolean;
+}
+
+export type QuickEditBaseline = Record<string, Record<string, QuickEditCell>>;
+
+export type QuickEditAction =
+  | { kind: "score"; value: number }
+  | { kind: "deleteScore" }
+  | { kind: "skip" }
+  | { kind: "unskip" };
 
 export interface QuickEditChange {
   slug: string;
   dimensionId: number;
-  /** null deletes the stored score. */
+  /** Ordered writes that move the cell to its drafted state. */
+  actions: QuickEditAction[];
+  /** Cell state after the writes land, used to advance the baseline. */
   value: number | null;
+  skip: boolean;
 }
 
 export interface QuickEditError {
@@ -34,17 +50,18 @@ function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** Seeds the draft with one-decimal text and keeps the server values as the baseline. */
+/** Seeds the draft with one-decimal text (or the skip keyword) and keeps the server values as the baseline. */
 export function createQuickEdit(models: RankingModel[], dimensions: RankingDimension[]): QuickEditState {
   const draft: QuickEditDraft = {};
   const baseline: QuickEditBaseline = {};
   for (const model of models) {
     const cells: Record<string, string> = {};
-    const base: Record<string, number | null> = {};
+    const base: Record<string, QuickEditCell> = {};
     for (const dimension of dimensions) {
       const value = model.scores[String(dimension.id)] ?? null;
-      cells[String(dimension.id)] = value == null ? "" : formatDimension(value);
-      base[String(dimension.id)] = value;
+      const skip = model.skips.includes(dimension.id);
+      cells[String(dimension.id)] = skip ? SKIP_KEYWORD : value == null ? "" : formatDimension(value);
+      base[String(dimension.id)] = { value, skip };
     }
     draft[model.slug] = cells;
     baseline[model.slug] = base;
@@ -54,7 +71,8 @@ export function createQuickEdit(models: RankingModel[], dimensions: RankingDimen
 
 /**
  * Derives the save plan in a stable slug + dimension order, independent of the
- * table's current view sort.
+ * table's current view sort. Skipping never deletes the stored rating, so a
+ * skip only ever adds the skip write.
  */
 export function collectQuickEdit(
   draft: QuickEditDraft,
@@ -74,11 +92,27 @@ export function collectQuickEdit(
         errors.push({ slug, dimensionId: dimension.id, message: parsed.error });
         continue;
       }
-      const base = baseline[slug]?.[key] ?? null;
-      if (parsed.value == null) {
-        if (base != null) changes.push({ slug, dimensionId: dimension.id, value: null });
-      } else if (parsed.value !== base) {
-        changes.push({ slug, dimensionId: dimension.id, value: parsed.value });
+      const base = baseline[slug]?.[key] ?? { value: null, skip: false };
+      const actions: QuickEditAction[] = [];
+      if (parsed.skip) {
+        if (!base.skip) actions.push({ kind: "skip" });
+      } else {
+        if (base.skip) actions.push({ kind: "unskip" });
+        if (parsed.value == null) {
+          if (base.value != null) actions.push({ kind: "deleteScore" });
+        } else if (parsed.value !== base.value) {
+          actions.push({ kind: "score", value: parsed.value });
+        }
+      }
+      if (actions.length > 0) {
+        // Skipping never deletes the stored rating, so the cell keeps its value.
+        changes.push({
+          slug,
+          dimensionId: dimension.id,
+          actions,
+          value: parsed.skip ? base.value : parsed.value,
+          skip: parsed.skip,
+        });
       }
     }
   }
@@ -92,9 +126,10 @@ export function commitQuickEdit(
   slug: string,
   dimensionId: number,
   value: number | null,
+  skip: boolean,
 ): QuickEditBaseline {
   return {
     ...baseline,
-    [slug]: { ...baseline[slug], [String(dimensionId)]: value },
+    [slug]: { ...baseline[slug], [String(dimensionId)]: { value, skip } },
   };
 }

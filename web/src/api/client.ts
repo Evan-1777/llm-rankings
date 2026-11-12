@@ -90,7 +90,7 @@ export const api = {
     ),
   createDimension: (input: DimensionInput) =>
     request<Dimension>("/api/dimensions", { method: "POST", body: JSON.stringify(input) }),
-  updateDimension: (id: number, input: DimensionInput) =>
+  updateDimension: (id: number, input: Partial<DimensionInput>) =>
     request<Dimension>(`/api/dimensions/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   setDimensionArchived: (id: number, archived: boolean) =>
     request<Dimension>(`/api/dimensions/${id}/${archived ? "archive" : "restore"}`, { method: "POST" }),
@@ -137,6 +137,14 @@ export const api = {
     }),
   deleteScore: (slug: string, dimensionId: number) =>
     request<void>(`/api/models/${encodeURIComponent(slug)}/scores/${dimensionId}`, {
+      method: "DELETE",
+    }),
+  putSkip: (slug: string, dimensionId: number) =>
+    request<void>(`/api/models/${encodeURIComponent(slug)}/skips/${dimensionId}`, {
+      method: "PUT",
+    }),
+  deleteSkip: (slug: string, dimensionId: number) =>
+    request<void>(`/api/models/${encodeURIComponent(slug)}/skips/${dimensionId}`, {
       method: "DELETE",
     }),
 };

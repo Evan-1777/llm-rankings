@@ -17,6 +17,13 @@
   flex-wrap: wrap;
 }
 
+.billActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
 .tableWrap {
   position: relative;
   overflow-x: auto;
@@ -31,6 +38,7 @@
 }
 
 .th {
+  position: relative;
   height: 58px;
   padding: 0 12px;
   border-bottom: 1px solid var(--ink);
@@ -60,12 +68,39 @@
   width: 112px;
 }
 
-.coverageCol {
-  width: 132px;
+.dimCol,
+.groupCol {
+  width: 92px;
 }
 
-.dimCol {
-  width: 92px;
+/* Detail entry: an unboxed chevron in the gap between columns, so sorting and
+   the dimension detail stay separate controls without changing column widths. */
+.detailBtn {
+  position: absolute;
+  right: -9px;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  opacity: 0.5;
+  transition: opacity 120ms var(--ease), color 120ms var(--ease);
+}
+
+.detailBtn:hover,
+.detailBtn:focus-visible {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.cellRule {
+  display: inline-block;
+  padding-left: 8px;
+  border-left: 2px solid var(--rule);
+  line-height: 1.2;
 }
 
 .actionCol {
@@ -174,6 +209,12 @@ tbody tr:last-child .td {
 
 .dimValue {
   font-size: 14px;
+}
+
+.groupValue {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }
 
 .rowActions {
@@ -415,15 +456,12 @@ tbody tr:last-child .td {
     width: 74px;
   }
 
-  .coverageCol {
-    width: 74px;
-  }
-
   .actionCol {
     width: 80px;
   }
 
-  .dimCol {
+  .dimCol,
+  .groupCol {
     display: none;
   }
 
