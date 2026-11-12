@@ -1,10 +1,12 @@
 # Plan：维度组 · 榜单图片导出 · 跳过维度（Skip）
 
-**状态**：REVISED（等待执行指令 / v1.4 吸收第四轮评审）  
+**状态**：DONE  
 **日期**：2026-11-12  
 **版本**：v1.4  
-**工作流**：Main-hybrid(Frontend) — 规划段产出，交接等待执行指令  
-**前端 Demo**：temp/dimension-groups-demo.html（静态 HTML，浏览器直接打开）
+**完成日期**：2026-11-12  
+**工作流**：Main-hybrid(Frontend) — 规划段产出，交付段已执行完毕  
+**前端 Demo**：temp/dimension-groups-demo.html（静态 HTML，浏览器直接打开）  
+**回归测试结论**：自动化基线全绿（`go test ./...` 64 个测试函数、`go vet ./...`、`CGO_ENABLED=0 go build ./cmd/server`、`pnpm --dir web test` 70/70、`pnpm --dir web typecheck`、`pnpm --dir web build`），coverage / provisional / 「暂定」残留为 0；浏览器在 1440 / 768 / 390 三视口逐项验收通过（组列与维度列排序、明细抽屉、Skip 预览与保存一致、设置批量分组、导出 PNG 无裁切）
 
 ---
 
