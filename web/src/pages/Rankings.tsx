@@ -18,7 +18,6 @@ import ui from "../components/ui.module.css";
 import {
   boardColumns,
   dimensionKey,
-  dimensionMax,
   groupKey,
   groupValue,
   snapshotBaselines,
@@ -29,7 +28,7 @@ import {
 } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { downloadRankingsImage } from "../lib/exportImage";
-import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange } from "../lib/scoreEmphasis";
+import { boardDisplays, displayScoreLabel, formatDisplayScore } from "../lib/scoreEmphasis";
 import { formatClock, monthKicker, rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -150,25 +149,8 @@ export function Rankings() {
     () => sortRows(models, sort.key, sort.dir, { groups: columns.groups, baselines }),
     [models, sort.key, sort.dir, columns, baselines],
   );
-  const scoreRanges = useMemo(() => dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id)), [models, dimensions]);
-  const dimensionMaxima = useMemo(
-    () => new Map(dimensions.map((dimension) => [dimension.id, dimensionMax(models, dimension.id)])),
-    [models, dimensions],
-  );
-  // A group column reads like a dimension column, so its display range and
-  // maximum come from the group values the board actually shows.
-  const groupDisplays = useMemo(
-    () =>
-      new Map(
-        columns.groups.map((group) => {
-          const values = models.map((model) => groupValue(group, model.scores, baselines, model.skips));
-          return [group.name, { range: scoreRange(values), max: scoreMax(values) }] as const;
-        }),
-      ),
-    [columns.groups, models, baselines],
-  );
-  const compositeRange = useMemo(() => scoreRange(models.map((model) => model.score)), [models]);
-  const compositeMax = useMemo(() => scoreMax(models.map((model) => model.score)), [models]);
+  // One definition of every column's display range and maximum, shared with the PNG export.
+  const displays = useMemo(() => boardDisplays(dimensions, models), [dimensions, models]);
 
   const updateSort = (key: string) => {
     const next = new URLSearchParams(params);
@@ -226,7 +208,7 @@ export function Rankings() {
     if (!data || exporting) return;
     setExporting(true);
     try {
-      await downloadRankingsImage(data);
+      await downloadRankingsImage(data, { ...displayMode, emphasis: dimensionScoreEmphasis });
       toast("图片已导出");
     } catch (caught) {
       toast(errorMessage(caught), "error");
@@ -240,10 +222,10 @@ export function Rankings() {
   const compositeNote = !scorePercentageMode
     ? "加权平均 / 全部模型"
     : scorePercentageMaxMode
-      ? compositeMax > 0
+      ? displays.compositeMax > 0
         ? "最高分占比 / 100% = 同项最高分"
         : "最高分占比 / 需有大于 0 的分值"
-      : compositeRange
+      : displays.compositeRange
         ? "相对强度 / 100% = 最强"
         : "相对强度 / 需至少两个不同分值";
 
@@ -377,7 +359,7 @@ export function Rankings() {
                         <span className={styles.vendor}>{model.vendor || "—"}</span>
                       </td>
                       <td className={`${styles.td} ${styles.alignRight} ${styles.scoreValue}`}>
-                        {formatDisplayScore(model.score, displayMode, compositeRange, compositeMax)}
+                        {formatDisplayScore(model.score, displayMode, displays.compositeRange, displays.compositeMax)}
                       </td>
                       {columns.columns.map((column) => (
                         <td
@@ -388,8 +370,8 @@ export function Rankings() {
                             {column.kind === "group" ? (
                               <DimensionScore
                                 value={groupValue(column.group, model.scores, baselines, model.skips)}
-                                range={groupDisplays.get(column.group.name)?.range}
-                                max={groupDisplays.get(column.group.name)?.max}
+                                range={displays.groups.get(column.group.name)?.range}
+                                max={displays.groups.get(column.group.name)?.max}
                               />
                             ) : model.skips.includes(column.dimension.id) ? (
                               <span className={scoreStyles.score}>
@@ -398,8 +380,8 @@ export function Rankings() {
                             ) : (
                               <DimensionScore
                                 value={model.scores[String(column.dimension.id)]}
-                                range={scoreRanges.get(column.dimension.id)}
-                                max={dimensionMaxima.get(column.dimension.id)}
+                                range={displays.dimensions.get(column.dimension.id)?.range}
+                                max={displays.dimensions.get(column.dimension.id)?.max}
                               />
                             )}
                           </span>

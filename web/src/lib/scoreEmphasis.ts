@@ -1,4 +1,13 @@
-import { barWidth, formatScore } from "../domain/ranking.ts";
+import {
+  barWidth,
+  boardColumns,
+  dimensionMax,
+  formatScore,
+  groupValue,
+  snapshotBaselines,
+  type Dimension,
+  type RankRow,
+} from "../domain/ranking.ts";
 
 export interface ScoreRow {
   scores: Record<string, number>;
@@ -53,6 +62,49 @@ export function dimensionScoreRanges(rows: readonly ScoreRow[], dimensionIds: re
     if (range) ranges.set(id, range);
   }
   return ranges;
+}
+
+/** Display range and maximum of one board column; the tone and both percentage modes read both. */
+export interface ColumnDisplay {
+  range: ScoreRange | null;
+  max: number;
+}
+
+export interface BoardDisplays {
+  compositeRange: ScoreRange | null;
+  compositeMax: number;
+  /** Per dimension id; every dimension has an entry, even without a range. */
+  dimensions: Map<number, ColumnDisplay>;
+  /** Per group name. */
+  groups: Map<string, ColumnDisplay>;
+}
+
+/**
+ * Display range and maximum of every board column in one snapshot. The board and
+ * its PNG export read this single definition, so the tone colours and percentages
+ * of an exported image always match the rankings page that produced it.
+ */
+export function boardDisplays(dimensions: Dimension[], models: RankRow[]): BoardDisplays {
+  const baselines = snapshotBaselines(dimensions);
+  const ranges = dimensionScoreRanges(models, dimensions.map((dimension) => dimension.id));
+  const groups = new Map<string, ColumnDisplay>();
+  for (const group of boardColumns(dimensions).groups) {
+    // A group column reads like a dimension column, so its range comes from the
+    // group values the board actually shows.
+    const values = models.map((model) => groupValue(group, model.scores, baselines, model.skips));
+    groups.set(group.name, { range: scoreRange(values), max: scoreMax(values) });
+  }
+  return {
+    compositeRange: scoreRange(models.map((model) => model.score)),
+    compositeMax: scoreMax(models.map((model) => model.score)),
+    dimensions: new Map(
+      dimensions.map((dimension) => [
+        dimension.id,
+        { range: ranges.get(dimension.id) ?? null, max: dimensionMax(models, dimension.id) },
+      ]),
+    ),
+    groups,
+  };
 }
 
 /** Relative strength inside the range, where the highest score is 100% and the lowest is 1%. */
