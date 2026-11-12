@@ -143,7 +143,6 @@ export function Rankings() {
 
   const dimensions = data?.dimensions ?? [];
   const models = data?.models ?? [];
-  const totalWeight = data?.totalWeight ?? 0;
   const scoredCount = models.filter((model) => model.score != null).length;
   const columns = useMemo(() => boardColumns(dimensions), [dimensions]);
   // The board converts with the snapshot's effective baselines, so hidden
@@ -176,7 +175,7 @@ export function Rankings() {
       kicker: "维度组 / 组内明细",
       title: group.name,
       color: group.color,
-      meta: `${group.dimensions.map((dimension) => `${dimension.name} · 权重 ${dimension.weight}`).join("   /   ")}   ·   组值按综合分公式的组内部分计算`,
+      meta: `${group.dimensions.map((dimension) => dimension.name).join("   /   ")}   ·   组值按综合分公式的组内部分计算`,
       dimensions: group.dimensions,
     });
   };
@@ -186,7 +185,7 @@ export function Rankings() {
       kicker: "维度 / 明细",
       title: dimension.name,
       color: null,
-      meta: `权重 ${dimension.weight} · 名次按同维度已评分模型`,
+      meta: "名次按同维度已评分模型",
       dimensions: [dimension],
     });
   };
@@ -330,7 +329,7 @@ export function Rankings() {
                         <ColumnHead
                           key={key}
                           label={group.name}
-                          sub={`${group.dimensions.length} 项 · 权重 ${group.weight}`}
+                          sub={`${group.dimensions.length} 项`}
                           active={sort.key === key}
                           dir={sort.dir}
                           onSort={() => updateSort(key)}
@@ -344,7 +343,7 @@ export function Rankings() {
                       <ColumnHead
                         key={key}
                         label={dimension.name}
-                        sub={`权重 ${dimension.weight}`}
+                        sub=""
                         active={sort.key === key}
                         dir={sort.dir}
                         onSort={() => updateSort(key)}
@@ -429,7 +428,7 @@ export function Rankings() {
               <span className={styles.footMark} aria-hidden="true" />
               维度组占一列，组值为组内参与计算维度的加权平均，可与综合分互相还原
             </p>
-            <p>权重合计 {data.totalWeight} / {percentageLabel}</p>
+            <p>{percentageLabel}</p>
           </div>
         </>
       );
@@ -441,7 +440,6 @@ export function Rankings() {
   const dimensionCount = data ? dimensions.length : session.counts.dimensions;
   const modelCount = data ? models.length : session.counts.models;
   const scored = data ? scoredCount : session.counts.scoredModels;
-  const weight = data ? totalWeight : session.totalWeight;
 
   return (
     <div className={`shell page-enter ${compareSlugs.length > 0 ? styles.pageWithBar : ""}`}>
@@ -449,9 +447,6 @@ export function Rankings() {
         <div className={ui.stats}>
           <div className={ui.statsTop}>
             <span>{dimensionCount} 个维度</span>
-            <span>
-              权重合计 <strong className={ui.statStrong}>{weight}</strong>
-            </span>
           </div>
           <div className={ui.statsBottom}>
             <span>{modelCount} 个模型</span>

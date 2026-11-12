@@ -109,7 +109,7 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
   ctx.font = `12px ${TOKENS.mono}`;
   const groupCount = layout.columns.filter((column) => column.kind === "group").length;
   ctx.fillText(
-    `${rows.length} 个模型 · ${rankings.dimensions.length} 个维度 · ${groupCount} 个维度组 · 权重合计 ${rankings.totalWeight} · Skip 按 60% 中位分计入`,
+    `${rows.length} 个模型 · ${rankings.dimensions.length} 个维度 · ${groupCount} 个维度组 · Skip 按 60% 中位分计入`,
     PAD,
     78,
   );
@@ -197,7 +197,7 @@ export function renderExportCanvas(canvas: HTMLCanvasElement, rankings: Rankings
   ctx.fillStyle = TOKENS.ink3;
   ctx.font = `10px ${TOKENS.mono}`;
   ctx.fillText(
-    `导出时间 ${now.toISOString().slice(0, 10)} · 权重合计 ${rankings.totalWeight} / 加权平均`,
+    `导出时间 ${now.toISOString().slice(0, 10)} · 加权平均`,
     PAD,
     height - 18,
   );

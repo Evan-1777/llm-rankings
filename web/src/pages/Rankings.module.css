@@ -85,11 +85,16 @@
   height: auto;
   min-height: 100%;
   padding-right: var(--score-pad-x);
+  /* The dimension or group name is the column's identity: a step darker and a
+     touch heavier than the rest of the header chrome. The active and hover
+     states still brighten it through the shared sort control. */
+  color: var(--ink-2);
 }
 
 .dimHead > :first-child {
   white-space: normal;
   overflow-wrap: anywhere;
+  font-weight: 500;
 }
 
 /* Detail entry: an unboxed chevron in the gap between columns, so sorting and
