@@ -5,6 +5,7 @@ import type { RankingDimension, RankingModel } from "../api/types";
 import { Button, IconButton } from "../components/Button";
 import { DetailDrawer, type DetailTarget } from "../components/DetailDrawer";
 import { DimensionScore } from "../components/DimensionScore";
+import scoreStyles from "../components/DimensionScore.module.css";
 import { Icon } from "../components/Icons";
 import { ModelDialog } from "../components/ModelDialog";
 import { PageHeading } from "../components/PageHeading";
@@ -372,7 +373,9 @@ export function Rankings() {
                         >
                           <span className={styles.cellRule}>
                             {column.kind === "group" ? (
-                              formatScore(groupValue(column.group, model.scores, baselines, model.skips))
+                              <span className={scoreStyles.score}>
+                                {formatScore(groupValue(column.group, model.scores, baselines, model.skips))}
+                              </span>
                             ) : model.skips.includes(column.dimension.id) ? (
                               <span className={ui.skip}>Skip</span>
                             ) : (

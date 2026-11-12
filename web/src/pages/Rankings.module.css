@@ -207,9 +207,7 @@ tbody tr:last-child .td {
 }
 
 .dimValue {
-  font-family: var(--font-mono);
   font-size: 14px;
-  font-variant-numeric: tabular-nums;
 }
 
 .rowActions {
