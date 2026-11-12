@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatDimension } from "../domain/ranking.ts";
 import {
+  barPercent,
   dimensionScoreRanges,
   displayScoreLabel,
   formatDisplayScore,
@@ -107,6 +108,18 @@ test("display score switches between actual, strength and max share once", () =>
   assert.equal(displayScoreLabel({ percentage: false, maxShare: false }, "综合分", "综合强度", "综合占比"), "综合分");
   assert.equal(displayScoreLabel({ percentage: true, maxShare: false }, "综合分", "综合强度", "综合占比"), "综合强度");
   assert.equal(displayScoreLabel({ percentage: true, maxShare: true }, "综合分", "综合强度", "综合占比"), "综合占比");
+});
+
+test("bar fill follows the display mode of the number beside it", () => {
+  const range = { min: 0, max: 10 };
+  close(barPercent(5, { percentage: true, maxShare: false }, range, 10), 50.5);
+  close(barPercent(5, { percentage: true, maxShare: true }, range, 10), 50);
+  close(barPercent(5, { percentage: false, maxShare: false }, range, 10), 50);
+  assert.equal(barPercent(12, { percentage: false, maxShare: false }, range, 10), 100);
+  assert.equal(barPercent(5, { percentage: true, maxShare: false }, null, 10), 0);
+  assert.equal(barPercent(5, { percentage: true, maxShare: true }, range, 0), 0);
+  assert.equal(barPercent(5, { percentage: false, maxShare: false }, range, 0), 0);
+  assert.equal(barPercent(null, { percentage: false, maxShare: false }, range, 10), 0);
 });
 
 test("scoreMax keeps the highest valid value and treats an empty set as zero", () => {

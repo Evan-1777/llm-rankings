@@ -9,9 +9,9 @@ import { PageHeading } from "../components/PageHeading";
 import { ScoreDialog } from "../components/ScoreDialog";
 import { EmptyState, ErrorState, PageLoading } from "../components/States";
 import ui from "../components/ui.module.css";
-import { barWidth, dimensionMax, dimensionRanks } from "../domain/ranking";
+import { dimensionMax, dimensionRanks } from "../domain/ranking";
 import { useAsyncData } from "../hooks/useAsyncData";
-import { dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange, strengthPercentile } from "../lib/scoreEmphasis";
+import { barPercent, dimensionScoreRanges, displayScoreLabel, formatDisplayScore, scoreMax, scoreRange } from "../lib/scoreEmphasis";
 import { rankLabel } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useDisplayPreferences } from "../preferences/DisplayPreferences";
@@ -224,10 +224,6 @@ export function ModelDetail() {
                 <tbody>
                   {numericDimensions.map((dimension) => {
                     const max = dimensionMax(displayModels, dimension.id);
-                    const percent =
-                      scorePercentageMode && !scorePercentageMaxMode
-                        ? strengthPercentile(dimension.value, scoreRanges.get(dimension.id))
-                        : null;
                     const ranked = ranksByDimension.get(dimension.id);
                     const rank = ranked?.get(detail.slug) ?? null;
                     const skipped = detail.skips.includes(dimension.id);
@@ -256,7 +252,9 @@ export function ModelDetail() {
                           <span className={styles.barTrack} aria-hidden="true">
                             <span
                               className={styles.barFill}
-                              style={{ width: `${scorePercentageMode && !scorePercentageMaxMode ? (percent ?? 0) : barWidth(dimension.value, max)}%` }}
+                              style={{
+                                width: `${barPercent(dimension.value, displayMode, scoreRanges.get(dimension.id), max)}%`,
+                              }}
                             />
                           </span>
                         </td>

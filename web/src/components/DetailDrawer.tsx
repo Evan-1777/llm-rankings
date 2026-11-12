@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import type { RankingModel } from "../api/types";
-import { barWidth, dimensionMax, dimensionRanks, formatDimension, type Dimension } from "../domain/ranking";
+import { dimensionMax, dimensionRanks, formatDimension, type Dimension } from "../domain/ranking";
+import { barPercent, dimensionScoreRanges } from "../lib/scoreEmphasis";
+import { useDisplayPreferences } from "../preferences/DisplayPreferences";
 import { Dialog, DialogHeader } from "./Dialog";
+import { DimensionScore } from "./DimensionScore";
+import scoreStyles from "./DimensionScore.module.css";
 import ui from "./ui.module.css";
 import styles from "./DetailDrawer.module.css";
 
@@ -22,6 +26,8 @@ interface DetailDrawerProps {
 
 /** Group and single-dimension detail share one drawer, so the two entries behave alike. */
 export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
+  const { scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
+  const displayMode = { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode };
   const [activeId, setActiveId] = useState<number | null>(null);
   const dimension = target?.dimensions.find((item) => item.id === activeId) ?? target?.dimensions[0] ?? null;
   const ranks = useMemo(
@@ -29,6 +35,11 @@ export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
     [rows, dimension],
   );
   const max = useMemo(() => (dimension ? dimensionMax(rows, dimension.id) : 0), [rows, dimension]);
+  // The drawer is one board column, so its values share that column's tone range.
+  const range = useMemo(
+    () => (dimension ? dimensionScoreRanges(rows, [dimension.id]).get(dimension.id) ?? null : null),
+    [rows, dimension],
+  );
 
   if (!target || !dimension) return null;
 
@@ -68,9 +79,15 @@ export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
                 <span className={styles.rankVendor}>{row.vendor || "—"}</span>
               </span>
               <span className={styles.rankBar} aria-hidden="true">
-                <span style={{ width: `${barWidth(row.scores[String(dimension.id)], max)}%` }} />
+                <span
+                  style={{
+                    width: `${barPercent(row.scores[String(dimension.id)], displayMode, range, max)}%`,
+                  }}
+                />
               </span>
-              <span className={styles.rankNum}>{formatDimension(row.scores[String(dimension.id)])}</span>
+              <span className={styles.rankNum}>
+                <DimensionScore value={row.scores[String(dimension.id)]} range={range} max={max} />
+              </span>
             </li>
           ))}
           {skipped.map((row) => (
@@ -81,7 +98,11 @@ export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
                 <span className={styles.rankVendor}>{row.vendor || "—"}</span>
               </span>
               <span className={styles.rankBar} aria-hidden="true" />
-              <span className={styles.rankNum}>Skip</span>
+              <span className={styles.rankNum}>
+                <span className={scoreStyles.score}>
+                  <span className={ui.skip}>Skip</span>
+                </span>
+              </span>
             </li>
           ))}
         </ol>

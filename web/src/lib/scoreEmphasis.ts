@@ -1,4 +1,4 @@
-import { formatScore } from "../domain/ranking.ts";
+import { barWidth, formatScore } from "../domain/ranking.ts";
 
 export interface ScoreRow {
   scores: Record<string, number>;
@@ -124,6 +124,20 @@ export function displayScoreLabel(
 ): string {
   if (!mode.percentage) return actual;
   return mode.maxShare ? maxShare : strength;
+}
+
+/**
+ * Fill of the bar drawn beside a score: the strength percentile in 分差 mode, the
+ * share of the highest score otherwise, so the bar and the number agree.
+ */
+export function barPercent(
+  value: number | null | undefined,
+  mode: ScoreDisplayMode,
+  range: ScoreRange | null | undefined,
+  max: number | null | undefined,
+): number {
+  if (mode.percentage && !mode.maxShare) return strengthPercentile(value, range) ?? 0;
+  return barWidth(value, max ?? 0);
 }
 
 /** Tone of a score inside its range: warm red when low, cool blue when high, nothing near the middle. */
