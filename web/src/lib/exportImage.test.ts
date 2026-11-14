@@ -40,7 +40,7 @@ test("layout stretches the rating columns over the leftover width", () => {
 
 /** Records the drawn text and rectangles so anchors, tone fills and underlines can be checked. */
 function recorder() {
-  const drawn: { text: string; x: number }[] = [];
+  const drawn: { text: string; x: number; fill: string }[] = [];
   const rects: { x: number; y: number; width: number; height: number; fill: string }[] = [];
   const state = { fill: "" };
   const width = (text: string) => text.length * 6;
@@ -60,7 +60,7 @@ function recorder() {
     lineTo() {},
     stroke() {},
     fillText(text: string, x: number) {
-      drawn.push({ text, x });
+      drawn.push({ text, x, fill: state.fill });
     },
     measureText: (text: string) => ({ width: width(text) }),
   };
@@ -224,6 +224,29 @@ test("export draws the board's tone on dimension and group values only", () => {
   renderExportCanvas(plain.canvas, rankings, ACTUAL, new Date("2026-11-12T00:00:00Z"));
   assert.equal(plain.rects.filter((rect) => rect.fill.startsWith("rgb(")).length, 0);
   assert.ok(!plain.drawn.some((item) => item.text.includes("低分红 → 高分蓝")));
+});
+
+test("export marks the champion by rank, not row order", () => {
+  const { dimensions, rankings } = board();
+  const layout = planExportLayout(dimensions);
+  const rowY = (index: number) => layout.headerHeight + 46 + index * layout.rowHeight + 28;
+
+  const { canvas, rects, drawn } = recorder();
+  renderExportCanvas(canvas, rankings, ACTUAL, new Date("2026-11-12T00:00:00Z"));
+  // Bravo holds rank 1 on the second row, so only that row gets the signal bar.
+  const signals = rects.filter((rect) => rect.fill === "#b92a20" && rect.width === 3);
+  assert.deepEqual(signals.map((rect) => rect.y), [rowY(1) - 14]);
+  assert.equal(drawn.find((item) => item.text === "01")?.fill, "#b92a20");
+  assert.equal(drawn.find((item) => item.text === "02")?.fill, "#14130f");
+
+  // A board with no ranks at all marks nothing.
+  const unranked: Rankings = { ...rankings, models: rankings.models.map((model) => ({ ...model, rank: null })) };
+  const plain = recorder();
+  renderExportCanvas(plain.canvas, unranked, ACTUAL, new Date("2026-11-12T00:00:00Z"));
+  assert.equal(plain.rects.filter((rect) => rect.fill === "#b92a20").length, 0);
+  const dashes = plain.drawn.filter((item) => item.text === "—");
+  assert.equal(dashes.length, 2);
+  assert.ok(dashes.every((item) => item.fill === "#14130f"));
 });
 
 test("layout widens instead of clipping many columns", () => {

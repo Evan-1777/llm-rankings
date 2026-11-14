@@ -666,14 +666,18 @@ export function Settings() {
                         placeholder="组名"
                         aria-label={`${dimension.name} 新组名`}
                         onChange={(event) => setNewGroupName(event.target.value)}
-                        onBlur={() => setNewGroupFor(null)}
+                        onBlur={(event) => {
+                          const name = event.currentTarget.value.trim();
+                          if (name !== "") void assignGroup([dimension.id], name);
+                          setNewGroupFor(null);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
                             event.preventDefault();
-                            void assignGroup([dimension.id], newGroupName);
-                            setNewGroupFor(null);
+                            event.currentTarget.blur();
                           } else if (event.key === "Escape") {
                             event.preventDefault();
+                            event.currentTarget.value = "";
                             setNewGroupFor(null);
                           }
                         }}

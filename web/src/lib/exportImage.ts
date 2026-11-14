@@ -219,13 +219,15 @@ export function renderExportCanvas(
 
   rows.forEach((model, index) => {
     const y = headRule + 46 + index * layout.rowHeight + 28;
-    if (index === 0) {
+    // The board marks rank 1, not the first row; an unranked board marks nothing.
+    const top = model.rank === 1;
+    if (top) {
       ctx.fillStyle = TOKENS.signal;
       ctx.fillRect(PAD - 8, y - 14, 3, 18);
     }
     for (const column of layout.columns) {
       if (column.kind === "rank") {
-        ctx.fillStyle = index === 0 ? TOKENS.signal : TOKENS.ink;
+        ctx.fillStyle = top ? TOKENS.signal : TOKENS.ink;
         ctx.font = `13px ${TOKENS.mono}`;
         ctx.fillText(model.rank == null ? "—" : String(model.rank).padStart(2, "0"), column.x, y);
         continue;

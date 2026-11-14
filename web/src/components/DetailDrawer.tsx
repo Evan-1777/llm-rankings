@@ -19,7 +19,7 @@ export interface DetailTarget {
 }
 
 interface DetailDrawerProps {
-  target: DetailTarget | null;
+  target: DetailTarget;
   rows: RankingModel[];
   onClose: () => void;
 }
@@ -29,7 +29,7 @@ export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
   const { scorePercentageMode, scorePercentageMaxMode } = useDisplayPreferences();
   const displayMode = { percentage: scorePercentageMode, maxShare: scorePercentageMaxMode };
   const [activeId, setActiveId] = useState<number | null>(null);
-  const dimension = target?.dimensions.find((item) => item.id === activeId) ?? target?.dimensions[0] ?? null;
+  const dimension = target.dimensions.find((item) => item.id === activeId) ?? target.dimensions[0];
   const ranks = useMemo(
     () => (dimension ? dimensionRanks(rows, [dimension.id]).get(dimension.id) ?? new Map<string, number>() : new Map<string, number>()),
     [rows, dimension],
@@ -40,8 +40,6 @@ export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
     () => (dimension ? dimensionScoreRanges(rows, [dimension.id]).get(dimension.id) ?? null : null),
     [rows, dimension],
   );
-
-  if (!target || !dimension) return null;
 
   const scored = rows
     .filter((row) => ranks.has(row.slug))
@@ -54,13 +52,12 @@ export function DetailDrawer({ target, rows, onClose }: DetailDrawerProps) {
       <div className={ui.dialogBody}>
         <p className={styles.meta}>{target.meta}</p>
         {target.dimensions.length > 1 ? (
-          <div className={styles.picker} role="tablist" aria-label="组内维度">
+          <div className={styles.picker} role="group" aria-label="组内维度">
             {target.dimensions.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                role="tab"
-                aria-selected={item.id === dimension.id}
+                aria-pressed={item.id === dimension.id}
                 className={`${styles.pick} ${item.id === dimension.id ? styles.pickActive : ""}`}
                 onClick={() => setActiveId(item.id)}
               >

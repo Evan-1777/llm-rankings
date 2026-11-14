@@ -522,7 +522,14 @@ export function Rankings() {
       {modelOpen ? (
         <ModelDialog open models={models} onClose={() => setModelOpen(false)} onSaved={refreshAll} />
       ) : null}
-      <DetailDrawer target={detail} rows={models} onClose={() => setDetail(null)} />
+      {detail ? (
+        <DetailDrawer
+          key={`${detail.kicker}:${detail.title}`}
+          target={detail}
+          rows={models}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
     </div>
   );
 }
