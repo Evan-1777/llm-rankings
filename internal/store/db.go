@@ -167,7 +167,9 @@ func (s *Store) MaxUpdatedAt(ctx context.Context) (*time.Time, error) {
 	return stampOrNil(raw)
 }
 
-// Counts returns model, enabled-dimension and scored-model counts.
+// Counts returns model, enabled-dimension and scored-model counts. A scored
+// model has at least one enabled, positively weighted dimension it has not
+// skipped, matching the ranking's own "已评分" definition.
 func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	var c Counts
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM models WHERE archived_at IS NULL AND hidden = 0`).Scan(&c.Models); err != nil {
@@ -180,7 +182,8 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		FROM scores s
 		JOIN dimensions d ON d.id = s.dimension_id
 		JOIN models m ON m.id = s.model_id
-		WHERE d.archived_at IS NULL AND d.weight > 0 AND m.archived_at IS NULL AND m.hidden = 0`).Scan(&c.ScoredModels); err != nil {
+		WHERE d.archived_at IS NULL AND d.weight > 0 AND m.archived_at IS NULL AND m.hidden = 0
+			AND NOT EXISTS (SELECT 1 FROM score_skips sk WHERE sk.model_id = s.model_id AND sk.dimension_id = s.dimension_id)`).Scan(&c.ScoredModels); err != nil {
 		return c, err
 	}
 	return c, nil

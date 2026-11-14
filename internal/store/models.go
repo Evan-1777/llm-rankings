@@ -26,7 +26,7 @@ type Model struct {
 
 // ModelSummary adds stored score totals and scoreable-dimension completeness
 // for management lists. ScoreCount includes archived dimensions; ScoredDimensions
-// only counts enabled dimensions with a positive weight.
+// only counts enabled, positively weighted dimensions the model has not skipped.
 type ModelSummary struct {
 	Model
 	ScoreCount       int
@@ -60,7 +60,8 @@ func scanModel(row rowScanner) (Model, error) {
 func (s *Store) ListModels(ctx context.Context, includeArchived bool) ([]ModelSummary, error) {
 	query := `SELECT m.id, m.slug, m.name, m.vendor, m.notes, m.hidden, m.archived_at, m.commentary, m.commentary_public, m.commentary_at, m.created_at, m.updated_at,
 		COUNT(sc.model_id),
-		COUNT(CASE WHEN d.archived_at IS NULL AND d.weight > 0 THEN 1 END)
+		COUNT(CASE WHEN d.archived_at IS NULL AND d.weight > 0
+			AND NOT EXISTS (SELECT 1 FROM score_skips sk WHERE sk.model_id = m.id AND sk.dimension_id = d.id) THEN 1 END)
 		FROM models m
 		LEFT JOIN scores sc ON sc.model_id = m.id
 		LEFT JOIN dimensions d ON d.id = sc.dimension_id`

@@ -74,7 +74,7 @@ export function Workbench() {
   const rows = useMemo(() => sortWorkbenchRows(models, sort.key, sort.dir), [models, sort.key, sort.dir]);
   const plan = useMemo(() => collectQuickEdit(draft, baseline, dimensions), [draft, baseline, dimensions]);
 
-  const scored = models.filter((model) => model.score != null).length;
+  const scored = models.filter((model) => model.scoredCount > 0).length;
   const canQuickEdit = Boolean(data && models.length > 0 && dimensions.length > 0);
   const dirty = editing && plan.pendingCount > 0;
 

@@ -653,7 +653,7 @@ func TestExportAndStatic(t *testing.T) {
 		t.Fatalf("anonymous export = %d", code)
 	}
 	e.login(t)
-	createDimension(t, e, "D", 10)
+	dimID := createDimension(t, e, "D", 10)
 	createModel(t, e, "m", "Model")
 	code, body, header := e.do(t, e.admin, http.MethodGet, "/api/export", nil, nil)
 	if code != http.StatusOK || !strings.Contains(header.Get("Content-Disposition"), "attachment") {
@@ -663,10 +663,33 @@ func TestExportAndStatic(t *testing.T) {
 	if err := json.Unmarshal(body, &snapshot); err != nil {
 		t.Fatalf("export is not JSON: %v", err)
 	}
-	for _, key := range []string{"version", "exportedAt", "dimensions", "models", "scores", "texts"} {
+	for _, key := range []string{"version", "exportedAt", "dimensions", "models", "scores", "skips", "texts"} {
 		if _, ok := snapshot[key]; !ok {
 			t.Fatalf("export missing %q", key)
 		}
+	}
+	// A payload without skips still holds an empty array, never null.
+	if skips, ok := snapshot["skips"].([]any); !ok || len(skips) != 0 {
+		t.Fatalf("empty export skips = %#v", snapshot["skips"])
+	}
+
+	code, body, _ = e.do(t, e.admin, http.MethodPut, "/api/models/m/skips/"+itoa(dimID), nil, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("seed skip = %d %s", code, body)
+	}
+	code, body, _ = e.do(t, e.admin, http.MethodGet, "/api/export", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("export after skip = %d %s", code, body)
+	}
+	if err := json.Unmarshal(body, &snapshot); err != nil {
+		t.Fatalf("export after skip is not JSON: %v", err)
+	}
+	skips, ok := snapshot["skips"].([]any)
+	if !ok || len(skips) != 1 {
+		t.Fatalf("export skips = %#v", snapshot["skips"])
+	}
+	if entry, ok := skips[0].(map[string]any); !ok || entry["modelSlug"] != "m" || entry["dimensionId"] != float64(dimID) {
+		t.Fatalf("export skip entry = %#v", skips[0])
 	}
 
 	code, body, _ = e.do(t, e.anon, http.MethodGet, "/api/unknown", nil, nil)

@@ -138,7 +138,9 @@ export function Rankings() {
 
   const dimensions = data?.dimensions ?? [];
   const models = data?.models ?? [];
-  const scoredCount = models.filter((model) => model.score != null).length;
+  // "已评分" means at least one rated, weighted, non-skipped dimension, matching
+  // the bootstrap summary and the workbench column.
+  const scoredCount = models.filter((model) => model.scoredCount > 0).length;
   const columns = useMemo(() => boardColumns(dimensions), [dimensions]);
   // The board converts with the snapshot's effective baselines, so hidden
   // models that hold a maximum keep the visible group values in step.

@@ -12,6 +12,7 @@ type exportResponse struct {
 	Dimensions []dimensionSnapshotResponse `json:"dimensions"`
 	Models     []exportModel               `json:"models"`
 	Scores     []exportScore               `json:"scores"`
+	Skips      []exportSkip                `json:"skips"`
 	Texts      []exportText                `json:"texts"`
 }
 
@@ -35,6 +36,11 @@ type exportScore struct {
 	Value       float64 `json:"value"`
 	Note        string  `json:"note"`
 	UpdatedAt   string  `json:"updatedAt"`
+}
+
+type exportSkip struct {
+	ModelSlug   string `json:"modelSlug"`
+	DimensionID int64  `json:"dimensionId"`
 }
 
 type exportText struct {
@@ -62,6 +68,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	texts, err := s.store.AllTexts(ctx)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	skips, err := s.store.AllSkips(ctx)
 	if err != nil {
 		s.internalError(w, err)
 		return
@@ -107,6 +118,14 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	exportSkips := make([]exportSkip, 0, len(skips))
+	for _, skip := range skips {
+		exportSkips = append(exportSkips, exportSkip{
+			ModelSlug:   slugByID[skip.ModelID],
+			DimensionID: skip.DimensionID,
+		})
+	}
+
 	now := s.now().UTC()
 	payload, err := json.MarshalIndent(exportResponse{
 		Version:    1,
@@ -114,6 +133,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		Dimensions: dimensions,
 		Models:     exportModels,
 		Scores:     exportScores,
+		Skips:      exportSkips,
 		Texts:      exportTexts,
 	}, "", "  ")
 	if err != nil {

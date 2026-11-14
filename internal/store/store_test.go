@@ -333,6 +333,49 @@ func TestListModelsCompletenessCountsScoreableDimensions(t *testing.T) {
 	if got := bySlug["empty"]; got.ScoreCount != 0 || got.ScoredDimensions != 0 {
 		t.Fatalf("empty model completeness = %+v", got)
 	}
+	counts, err := s.Counts(ctx)
+	if err != nil {
+		t.Fatalf("counts before skip: %v", err)
+	}
+	if counts.ScoredModels != 1 {
+		t.Fatalf("scored models before skip = %d, want 1", counts.ScoredModels)
+	}
+	if err := s.SetSkip(ctx, "m", active.ID); err != nil {
+		t.Fatalf("set skip: %v", err)
+	}
+	models, err = s.ListModels(ctx, false)
+	if err != nil {
+		t.Fatalf("list models after skip: %v", err)
+	}
+	for _, m := range models {
+		bySlug[m.Slug] = m
+	}
+	if got := bySlug["m"]; got.ScoreCount != 3 || got.ScoredDimensions != 0 {
+		t.Fatalf("m completeness after skip = %d scores / %d scoreable, want 3 / 0", got.ScoreCount, got.ScoredDimensions)
+	}
+	if counts, err = s.Counts(ctx); err != nil {
+		t.Fatalf("counts after skip: %v", err)
+	} else if counts.ScoredModels != 0 {
+		t.Fatalf("scored models after skip = %d, want 0", counts.ScoredModels)
+	}
+	if err := s.DeleteSkip(ctx, "m", active.ID); err != nil {
+		t.Fatalf("delete skip: %v", err)
+	}
+	models, err = s.ListModels(ctx, false)
+	if err != nil {
+		t.Fatalf("list models after clearing skip: %v", err)
+	}
+	for _, m := range models {
+		bySlug[m.Slug] = m
+	}
+	if got := bySlug["m"]; got.ScoreCount != 3 || got.ScoredDimensions != 1 {
+		t.Fatalf("m completeness after clearing skip = %d scores / %d scoreable, want 3 / 1", got.ScoreCount, got.ScoredDimensions)
+	}
+	if counts, err = s.Counts(ctx); err != nil {
+		t.Fatalf("counts after clearing skip: %v", err)
+	} else if counts.ScoredModels != 1 {
+		t.Fatalf("scored models after clearing skip = %d, want 1", counts.ScoredModels)
+	}
 }
 
 func ids(dims []Dimension) []int64 {
